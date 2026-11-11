@@ -3,7 +3,6 @@ import { useUI } from '../lib/ui'
 
 const ITEMS: { label: string; icon: IconName }[] = [
   { label: 'Family', icon: 'family' },
-  { label: 'Ask', icon: 'chat' },
   { label: 'Calendar', icon: 'calendar' },
   { label: 'Settings', icon: 'settings' },
 ]
