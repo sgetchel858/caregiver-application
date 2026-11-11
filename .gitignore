@@ -1,0 +1,9 @@
+.DS_Store
+node_modules
+app/dist
+app/.env.local
+app/.env.*.local
+
+# Design source files (personas, brand guide, mockups) stay out of this public repo.
+# Delete this line if you want them published.
+Designs/
