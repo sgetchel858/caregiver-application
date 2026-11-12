@@ -6,11 +6,24 @@ import { Avatar } from './Avatar'
 import { ContextStrip } from './ContextStrip'
 
 /** Home header: user avatar, logo lockup, notifications. */
-export function HomeHeader({ user, onBell }: { user?: { initials: string; avatarColor: string; firstName: string }; onBell: () => void }) {
+export function HomeHeader({
+  user,
+  onBell,
+  onAvatar,
+}: {
+  user?: { initials: string; avatarColor: string; firstName: string }
+  onBell: () => void
+  /** opens the user's own profile */
+  onAvatar?: () => void
+}) {
   return (
     <header className="header">
       <div className="header__bar header__bar--home">
-        {user ? (
+        {user && onAvatar ? (
+          <button className="header__icon-btn" aria-label="Your profile" onClick={onAvatar}>
+            <Avatar initials={user.initials} color={user.avatarColor} size={40} />
+          </button>
+        ) : user ? (
           <Avatar initials={user.initials} color={user.avatarColor} size={40} label={user.firstName} />
         ) : (
           <div style={{ width: 40 }} />

@@ -1,5 +1,5 @@
 /** App store fixtures: the family, the user and the family calendar. No medical records here. */
-import type { Appointment, AppUser, Family, ToBookItem, UserSettings } from '../../types'
+import type { Appointment, AppUser, Family, FamilyMember, ToBookItem, UserSettings } from '../../types'
 
 export const currentUser: AppUser = {
   id: 'sarah',
@@ -9,17 +9,32 @@ export const currentUser: AppUser = {
   avatarColor: '#A5D7C7',
 }
 
-export const family: Family = {
+/** As stored: ages are worked out from the birth year when the family is read. */
+export type StoredMember = Omit<FamilyMember, 'age'>
+export type StoredFamily = Omit<Family, 'members'> & { members: StoredMember[] }
+/** As stored: who could take them is worked out from the care circles. */
+export type StoredAppointment = Omit<Appointment, 'escortOptions'>
+
+const member = (m: Omit<StoredMember, 'lastName' | 'isSelf' | 'healthMemberId'>): StoredMember => ({
+  ...m,
+  healthMemberId: m.id,
+  lastName: 'Mitchell',
+  isSelf: false,
+})
+
+export const family: StoredFamily = {
   id: 'fam-mitchell',
   name: 'The Mitchells',
   members: [
-    { id: 'margaret', healthMemberId: 'margaret', firstName: 'Margaret', relation: 'Mom', userIs: 'daughter', age: 78, initials: 'MM', avatarColor: '#B4D455' },
-    { id: 'robert', healthMemberId: 'robert', firstName: 'Robert', relation: 'Dad', userIs: 'daughter', age: 80, initials: 'RM', avatarColor: '#A5D7C7' },
-    { id: 'mike', healthMemberId: 'mike', firstName: 'Mike', relation: 'Husband', userIs: 'wife', age: 47, initials: 'MK', avatarColor: '#D8ECF5' },
-    { id: 'emma', healthMemberId: 'emma', firstName: 'Emma', relation: 'Daughter', userIs: 'mom', age: 14, initials: 'EM', avatarColor: '#FFF6C8' },
-    { id: 'leo', healthMemberId: 'leo', firstName: 'Leo', relation: 'Son', userIs: 'mom', age: 9, initials: 'LM', avatarColor: '#E8F5F1' },
+    // Sarah herself: her entry has the same id as the user
+    { ...member({ id: 'sarah', firstName: 'Sarah', relation: 'Me', userIs: 'self', birthYear: 1981, initials: 'SM', avatarColor: '#A5D7C7' }), healthMemberId: null, isSelf: true },
+    member({ id: 'margaret', firstName: 'Margaret', relation: 'Mom', userIs: 'daughter', birthYear: 1948, initials: 'MM', avatarColor: '#B4D455' }),
+    member({ id: 'robert', firstName: 'Robert', relation: 'Dad', userIs: 'daughter', birthYear: 1946, initials: 'RM', avatarColor: '#A5D7C7' }),
+    member({ id: 'mike', firstName: 'Mike', relation: 'Husband', userIs: 'wife', birthYear: 1979, initials: 'MK', avatarColor: '#D8ECF5' }),
+    member({ id: 'emma', firstName: 'Emma', relation: 'Daughter', userIs: 'mom', birthYear: 2012, initials: 'EM', avatarColor: '#FFF6C8' }),
+    member({ id: 'leo', firstName: 'Leo', relation: 'Son', userIs: 'mom', birthYear: 2017, initials: 'LM', avatarColor: '#E8F5F1' }),
   ],
-  careCircles: { margaret: ['robert', 'mike'] },
+  careCircles: { margaret: ['robert', 'mike'], emma: ['mike'], leo: ['mike'] },
 }
 
 export const defaultSettings: UserSettings = {
@@ -31,7 +46,7 @@ export const defaultSettings: UserSettings = {
  * Calendar, from FLOW.md "Calendar (as of Wed, Nov 11)". Dad and Leo have
  * nothing scheduled. The Riverside Neurology phone number is made up.
  */
-export const appointments: Appointment[] = [
+export const appointments: StoredAppointment[] = [
   {
     id: 'appt-okafor',
     familyId: 'fam-mitchell',
@@ -45,7 +60,6 @@ export const appointments: Appointment[] = [
     note: 'first visit, hand tremor',
     healthVisitId: 'v-okafor',
     escortId: 'sarah',
-    escortOptions: ['sarah', 'robert', 'mike'],
   },
   {
     id: 'appt-warfarin-refill',
@@ -60,7 +74,6 @@ export const appointments: Appointment[] = [
     note: null,
     healthVisitId: null,
     escortId: null,
-    escortOptions: [],
   },
   {
     id: 'appt-emma-physical',
@@ -75,7 +88,6 @@ export const appointments: Appointment[] = [
     note: null,
     healthVisitId: null,
     escortId: null,
-    escortOptions: ['sarah', 'mike'],
   },
 ]
 

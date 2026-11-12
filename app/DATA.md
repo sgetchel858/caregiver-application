@@ -295,7 +295,7 @@ The schema, row-level security and the demo seed live in [`supabase/migrations/`
 |---|---|
 | `app_users` | One row per signed-in user. `id` is the Auth0 `sub` (text). |
 | `families` | "The Mitchells". |
-| `family_members` | Everyone in the family, whether or not they use the app. `health_member_id` is the Health API `memberId`. A user has their own row (`app_user_id` set). |
+| `family_members` | Everyone in the family, whether or not they use the app: name, relation, birth year, avatar. `health_member_id` is the Health API `memberId`, null until records are connected. A user has their own row (`app_user_id` set, relation `Me`). |
 | `family_access` | Who can see a family: `owner`, `editor` or `viewer`. |
 | `care_circles` | Who gets updates about whom ("Also update Dad and Mike"). |
 | `user_settings` | Large text, share updates by default. |
@@ -310,16 +310,22 @@ The schema, row-level security and the demo seed live in [`supabase/migrations/`
 
 **Row-level security.** It is on for every table. A user can read rows only for families they appear in through `family_access`, and writes need `owner` or `editor`. The publishable key is public by design and on its own reads nothing, so RLS is the real protection.
 
+**Profiles.** A member's profile shows who they are from this store (editable: name, relation, birth year, color, who gets updates) and their health summary from the Health API. The health part appears only when `health_member_id` is set and the family briefing reports `recordsConnected` for it; otherwise the profile offers "Connect records" (not built yet).
+
 **Demo seed.** `bootstrap_demo_family()` runs when a user first opens the app and gives them their own copy of the Mitchell family, with the user as Sarah. It mirrors `mock/fixtures/app.ts` and does nothing on later calls. Remove it before real users sign up.
 
-**Ids.** Rows have uuid ids. Screens pass the Health API member id (the `/m/:memberId` route) to the prep sheet, question list and draft methods, so `SupabaseAppStore` accepts either a `family_members.id` or a `health_member_id` wherever a method takes a member id.
+**Ids.** Rows have uuid ids. The one exception screens see: the user's own family entry has the user's id (`FamilyMember.id === AppUser.id`, `isSelf: true`), so "me" is the same id on a profile, as an escort and as the sender of an update. `SupabaseAppStore` maps it to the user's `family_members` row. Screens pass the Health API member id (the `/m/:memberId` route) to the prep sheet, question list and draft methods, so `SupabaseAppStore` accepts a `family_members.id`, the user's id or a `health_member_id` wherever a method takes a member id. The profile route `/m/:memberId` takes a member's id or their Health API id.
 
 **Mapping to `AppStore` methods**
 
 | Method | Table(s) |
 |---|---|
 | `getCurrentUser()` | `app_users` (the row whose id is the token's `sub`) |
-| `getFamily()` | `families` + `family_members` + `care_circles` via `family_access` |
+| `getFamily()` | `families` + `family_members` + `care_circles` via `family_access`. The user's own row is in `members` with `isSelf: true` |
+| `addMember(input)` | insert into `family_members` (no `health_member_id`: records are connected separately) |
+| `updateMember(id, patch)` | update `family_members`; for the user's own row, also `app_users` (name, initials, color) |
+| `removeMember(id)` | delete from `family_members`; their appointments, prep sheets, drafts and care circle rows cascade. Never the user's own row |
+| `setCareCircle(id, notifyIds)` | replace the member's `care_circles` rows |
 | `getSettings()` / `updateSettings()` | `user_settings` |
 | `getPrepSheet()` / `savePrepSheet()` | `prep_sheets` |
 | `getQuestionList()` / `saveQuestionList()` | `question_lists` |
@@ -334,8 +340,8 @@ The schema, row-level security and the demo seed live in [`supabase/migrations/`
 
 **Calendar notes**
 
-- `Appointment.escortId` is the signed-in user's id or a family member's id. In Supabase the user has their own `family_members` row (`app_user_id` set), so `escort_member_id` covers both. Map it back to the user's id when it is their row.
-- `Appointment.escortOptions` is not a column: for a visit it is the signed-in user plus the member's `care_circles` rows, and for a refill it is empty.
+- `Appointment.escortId` is a family member's id, which for the user is their own id (see Ids). In Supabase `escort_member_id` points at the `family_members` row either way.
+- `Appointment.escortOptions` is not a column: for a visit it is the signed-in user plus the member's `care_circles` rows (so changing who gets updates about someone also changes who can take them), and for a refill it is empty.
 - Appointment titles, places and notes are health details ("Neurology with Dr. Okafor"), so the decision at the top of this part applies to these two tables as well. To keep PHI out of Supabase, store only `health_visit_id` and read the title and place from the Health API.
 - The agent's week summary, the "Prep sheet ready" label and "Ready for this visit" come from the Health API (Part 1, Calendar), never from these tables.
 - "Today" for the calendar comes from the shared `Clock` service: the demo scene's date in mock mode, the real date when the Health API is live.

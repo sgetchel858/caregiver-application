@@ -4,6 +4,7 @@ import { ErrorState } from './Feedback'
 import { useServices } from '../lib/services'
 import { useAction } from '../lib/useAsync'
 import { joinNames } from '../lib/format'
+import { isAdult } from '../lib/family'
 import type { Family, FamilyUpdate } from '../services/types'
 
 /**
@@ -24,7 +25,7 @@ export function ShareSheet({
   onClose: (sentTo?: string[]) => void
 }) {
   const { store } = useServices()
-  const candidates = family.members.filter((m) => m.age >= 18 && m.healthMemberId !== aboutMemberId && m.id !== aboutMemberId)
+  const candidates = family.members.filter((m) => !m.isSelf && isAdult(m) && m.healthMemberId !== aboutMemberId && m.id !== aboutMemberId)
   const [picked, setPicked] = useState<string[]>(
     (family.careCircles[aboutMemberId] ?? []).filter((id) => candidates.some((c) => c.id === id)),
   )

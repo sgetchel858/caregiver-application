@@ -241,6 +241,7 @@ export type Database = {
           health_member_id: string | null
           id: string
           initials: string
+          last_name: string
           relation: string
           sort_order: number
           user_is: string
@@ -254,6 +255,7 @@ export type Database = {
           health_member_id?: string | null
           id?: string
           initials: string
+          last_name?: string
           relation: string
           sort_order?: number
           user_is: string
@@ -267,6 +269,7 @@ export type Database = {
           health_member_id?: string | null
           id?: string
           initials?: string
+          last_name?: string
           relation?: string
           sort_order?: number
           user_is?: string

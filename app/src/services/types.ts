@@ -395,24 +395,41 @@ export interface AppUser {
 }
 
 export interface FamilyMember {
+  /** the member's id. For the user's own entry (`isSelf`) this is the user's id. */
   id: string
   /** id in the Health API, or null if no records are connected */
   healthMemberId: string | null
   firstName: string
-  /** how Sarah refers to them, e.g. "Mom", "Husband" */
+  lastName: string
+  /** how the user refers to them, e.g. "Mom", "Husband". "Me" for the user's own entry. */
   relation: string
-  /** how this member refers to Sarah, e.g. "daughter" */
+  /** how this member refers to the user, e.g. "daughter". "self" for the user's own entry. */
   userIs: string
-  age: number
+  birthYear: number | null
+  /** from `birthYear`; null when it isn't known */
+  age: number | null
   initials: string
+  avatarColor: string
+  /** true for the signed-in user's own entry */
+  isSelf: boolean
+}
+
+/** What the user can set on a family member's profile. */
+export interface MemberInput {
+  firstName: string
+  lastName: string
+  relation: string
+  userIs: string
+  birthYear: number | null
   avatarColor: string
 }
 
 export interface Family {
   id: string
   name: string
+  /** everyone in the family, the user included (`isSelf`) */
   members: FamilyMember[]
-  /** who gets updates about whom: memberId -> memberIds */
+  /** who gets updates about whom, besides the user: memberId -> memberIds */
   careCircles: Record<string, string[]>
 }
 

@@ -36,7 +36,7 @@ export function AskCareTeam() {
     const saved = drafts.find((d) => d.about?.kind === 'interaction-check' && d.about.id === checkId)
     const circle = (family.careCircles[memberId] ?? [])
       .map((id) => family.members.find((m) => m.id === id))
-      .filter((m): m is FamilyMember => !!m)
+      .filter((m): m is FamilyMember => !!m && !m.isSelf)
     return { followUp, draft: saved ?? followUp.draft, circle, user }
   }, [memberId, checkId])
 

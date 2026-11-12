@@ -38,7 +38,7 @@ export function NurseCardScreen() {
         <div className="col" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px' }}>
           <span className="small muted">
             {state.status === 'success' && state.data.member
-              ? `Shown by ${state.data.user.firstName} (${state.data.member.userIs})`
+              ? `Shown by ${state.data.user.firstName}${state.data.member.isSelf ? '' : ` (${state.data.member.userIs})`}`
               : ' '}
           </span>
           <button

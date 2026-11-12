@@ -11,6 +11,8 @@ import { useServices } from '../lib/services'
 import { useAsync } from '../lib/useAsync'
 import { useUI } from '../lib/ui'
 import { greeting } from '../lib/format'
+import { MemberEditSheet } from '../components/MemberEditSheet'
+import { isAdult } from '../lib/family'
 import type { FamilyMember, MemberStatus } from '../services/types'
 
 function MemberCard({
@@ -26,13 +28,14 @@ function MemberCard({
   compact: boolean
   onOpen: () => void
 }) {
-  const label = compact ? `${member.firstName} · ${member.age}` : `${member.firstName} · ${member.relation}`
+  const detail = compact ? member.age : member.isSelf ? 'You' : member.relation
+  const label = detail === null ? member.firstName : `${member.firstName} · ${detail}`
   return (
     <button className={`member-card ${focus ? 'member-card--focus' : ''} ${compact ? 'member-card--compact' : ''}`} onClick={onOpen}>
       <Avatar initials={member.initials} color={member.avatarColor} size={compact ? 40 : 52} />
       <span className="member-card__text">
         <span className="member-card__name">{label}</span>
-        <span className="member-card__line">{status?.line ?? ' '}</span>
+        <span className="member-card__line">{status?.line ?? 'Records not connected'}</span>
       </span>
       {!compact && <Icon name="chevron" size={20} color="#535458" />}
     </button>
@@ -58,6 +61,7 @@ export function FamilyHome() {
   const { toast } = useUI()
   const navigate = useNavigate()
   const [question, setQuestion] = useState('')
+  const [adding, setAdding] = useState(false)
 
   const state = useAsync(async () => {
     const [user, family] = await Promise.all([store.getCurrentUser(), store.getFamily()])
@@ -66,15 +70,13 @@ export function FamilyHome() {
     return { user, family, briefing }
   }, [])
 
-  const openMember = (m: FamilyMember, status?: MemberStatus) => {
-    if (m.healthMemberId && status?.recordsConnected) navigate(`/m/${m.healthMemberId}`)
-    else toast(`${m.firstName}'s records aren't part of this demo. Try Mom.`)
-  }
+  const openMember = (m: FamilyMember) => navigate(`/m/${encodeURIComponent(m.healthMemberId ?? m.id)}`)
 
   const askFamily = (q: string) => {
     if (state.status !== 'success') return
     const lower = q.toLowerCase()
-    const members = state.data.family.members
+    // the user's own entry is "Me", which is inside too many words to match on
+    const members = state.data.family.members.filter((m) => !m.isSelf)
     const named = members.find(
       (m) => lower.includes(m.relation.toLowerCase()) || lower.includes(m.firstName.toLowerCase()),
     )
@@ -93,6 +95,7 @@ export function FamilyHome() {
       <HomeHeader
         user={state.status === 'success' ? state.data.user : undefined}
         onBell={() => toast('No new notifications.')}
+        onAvatar={() => state.status === 'success' && navigate(`/m/${encodeURIComponent(state.data.user.id)}`)}
       />
       <div className="scroll">
         <main className="col stack" style={{ paddingTop: 20, paddingBottom: 12, gap: 14 }}>
@@ -100,8 +103,9 @@ export function FamilyHome() {
             {({ user, family, briefing }) => {
               const statusOf = (m: FamilyMember) => briefing.statuses.find((s) => s.memberId === m.healthMemberId)
               const focusIds = new Set(briefing.nudges.map((n) => n.memberId))
-              const adults = family.members.filter((m) => m.age >= 18)
-              const kids = family.members.filter((m) => m.age < 18)
+              // the people the user looks after come first; the user's own card closes the adults
+              const adults = [...family.members.filter((m) => isAdult(m) && !m.isSelf), ...family.members.filter((m) => m.isSelf)]
+              const kids = family.members.filter((m) => !isAdult(m))
               return (
                 <>
                   <div className="stack" style={{ gap: 4 }}>
@@ -130,18 +134,18 @@ export function FamilyHome() {
                           status={statusOf(m)}
                           focus={!!m.healthMemberId && focusIds.has(m.healthMemberId)}
                           compact={false}
-                          onOpen={() => openMember(m, statusOf(m))}
+                          onOpen={() => openMember(m)}
                         />
                       ))}
                     </div>
                     {kids.length > 0 && (
                       <div className="grid-2">
                         {kids.map((m) => (
-                          <MemberCard key={m.id} member={m} status={statusOf(m)} focus={false} compact onOpen={() => openMember(m, statusOf(m))} />
+                          <MemberCard key={m.id} member={m} status={statusOf(m)} focus={false} compact onOpen={() => openMember(m)} />
                         ))}
                       </div>
                     )}
-                    <button className="btn btn--dashed" onClick={() => toast("Adding family members isn't part of this demo.")}>
+                    <button className="btn btn--dashed" onClick={() => setAdding(true)}>
                       + Add a family member
                     </button>
                   </div>
@@ -165,6 +169,15 @@ export function FamilyHome() {
         </div>
       </div>
       <BottomNav current="Family" />
+      {adding && state.status === 'success' && (
+        <MemberEditSheet
+          family={state.data.family}
+          onClose={(result) => {
+            setAdding(false)
+            if (result && 'saved' in result) navigate(`/m/${encodeURIComponent(result.saved.id)}`)
+          }}
+        />
+      )}
     </div>
   )
 }

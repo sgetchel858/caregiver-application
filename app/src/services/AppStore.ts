@@ -3,7 +3,9 @@ import type {
   AppUser,
   DateRange,
   Family,
+  FamilyMember,
   FamilyUpdate,
+  MemberInput,
   MessageDraft,
   QuestionList,
   SavedPrepSheet,
@@ -18,7 +20,18 @@ import type {
  */
 export interface AppStore {
   getCurrentUser(): Promise<AppUser>
+  /** the family, the user's own entry included */
   getFamily(): Promise<Family>
+
+  /* ---- family members ---- */
+  addMember(input: MemberInput): Promise<FamilyMember>
+  /** editing the user's own entry also updates the user (name, initials, color) */
+  updateMember(memberId: string, patch: Partial<MemberInput>): Promise<FamilyMember>
+  /** removes a member and their app data (calendar items, prep sheets…). Never the user's own entry. */
+  removeMember(memberId: string): Promise<void>
+  /** who gets updates about this member, besides the user; returns the saved list */
+  setCareCircle(memberId: string, notifyIds: string[]): Promise<string[]>
+
   getSettings(): Promise<UserSettings>
   updateSettings(patch: Partial<UserSettings>): Promise<UserSettings>
 

@@ -19,16 +19,20 @@ export function Sheet({
   const id = useId()
   const ref = useRef<HTMLDivElement>(null)
 
+  // Callers pass a new onClose on every render. Focus must move only when the
+  // sheet opens, or typing in a field inside it would lose focus on each key.
+  const close = useRef(onClose)
+  close.current = onClose
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null
     ref.current?.focus()
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close.current()
     window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('keydown', onKey)
       prev?.focus?.()
     }
-  }, [onClose])
+  }, [])
 
   if (!deviceEl) return null
   return createPortal(

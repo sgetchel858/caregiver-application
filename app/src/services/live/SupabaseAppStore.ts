@@ -9,6 +9,7 @@ import type {
   Family,
   FamilyMember,
   FamilyUpdate,
+  MemberInput,
   MessageDraft,
   PrepSheet,
   QuestionList,
@@ -16,6 +17,7 @@ import type {
   ToBookItem,
   UserSettings,
 } from '../types'
+import { initialsOf } from '../../lib/family'
 import type { Database, Json } from './database.types'
 
 type Tables = Database['public']['Tables']
@@ -52,6 +54,22 @@ function ok<T>(res: PostgrestSingleResponse<T>): T {
 }
 
 const toJson = (v: unknown) => v as Json
+
+function toMember(r: MemberRow, id: string, isSelf: boolean): FamilyMember {
+  return {
+    id,
+    healthMemberId: r.health_member_id,
+    firstName: r.first_name,
+    lastName: r.last_name ?? '', // '' until the member_profiles migration is applied
+    relation: r.relation,
+    userIs: r.user_is,
+    birthYear: r.birth_year,
+    age: r.birth_year ? new Date().getFullYear() - r.birth_year : null,
+    initials: r.initials,
+    avatarColor: r.avatar_color,
+    isSelf,
+  }
+}
 
 /**
  * Supabase-backed app store. Tables, row-level security and the demo seed are
@@ -108,36 +126,29 @@ export class SupabaseAppStore implements AppStore {
       avatarColor: u.avatar_color,
     }
     const selfMemberId = rows.find((r) => r.app_user_id === user.id)?.id ?? null
-    const year = new Date().getFullYear()
-    const members: FamilyMember[] = rows
-      .filter((r) => r.id !== selfMemberId)
-      .map((r) => ({
-        id: r.id,
-        healthMemberId: r.health_member_id,
-        firstName: r.first_name,
-        relation: r.relation,
-        userIs: r.user_is,
-        age: r.birth_year ? year - r.birth_year : 0,
-        initials: r.initials,
-        avatarColor: r.avatar_color,
-      }))
+    // To screens, the user's own entry has the user's id.
+    const personId = (rowId: string) => (rowId === selfMemberId ? user.id : rowId)
+    const members = rows.map((r) => toMember(r, personId(r.id), r.id === selfMemberId))
 
-    // Screens look a care circle up by the member's id or by their Health API id.
+    // Who else gets updates about a member. Screens look it up by the member's
+    // id or by their Health API id. The user always sees updates, so their own
+    // entry is left out.
     const careCircles: Record<string, string[]> = {}
     for (const c of circles) {
+      if (c.notify_member_id === selfMemberId) continue
       const about = rows.find((r) => r.id === c.about_member_id)
-      const notify = c.notify_member_id === selfMemberId ? user.id : c.notify_member_id
-      for (const key of [c.about_member_id, about?.health_member_id]) {
-        if (key) (careCircles[key] ??= []).push(notify)
+      for (const key of [personId(c.about_member_id), about?.health_member_id]) {
+        if (key) (careCircles[key] ??= []).push(c.notify_member_id)
       }
     }
 
     return { user, family: { id: f.id, name: f.name, members, careCircles }, rows, selfMemberId }
   }
 
-  /** The family_members row for a member's id or their Health API id. */
+  /** The family_members row for a member's id (the user's id for their own entry) or their Health API id. */
   private memberRow(s: Session, memberId: string): MemberRow {
-    const row = s.rows.find((r) => r.id === memberId) ?? s.rows.find((r) => r.health_member_id === memberId)
+    const rowId = memberId === s.user.id ? s.selfMemberId : memberId
+    const row = s.rows.find((r) => r.id === rowId) ?? s.rows.find((r) => r.health_member_id === memberId)
     if (!row) throw new ServiceError('not-found', `No family member "${memberId}"`)
     return row
   }
@@ -156,7 +167,7 @@ export class SupabaseAppStore implements AppStore {
     return memberId === s.selfMemberId ? s.user.id : memberId
   }
 
-  /* ---- user, family, settings ---- */
+  /* ---- user and family ---- */
 
   async getCurrentUser(): Promise<AppUser> {
     return (await this.load()).user
@@ -165,6 +176,116 @@ export class SupabaseAppStore implements AppStore {
   async getFamily(): Promise<Family> {
     return (await this.load()).family
   }
+
+  /* ---- family members ---- */
+
+  /** Forget the cached family so the next read sees the change. */
+  private changed() {
+    this.session = null
+  }
+
+  async addMember(input: MemberInput): Promise<FamilyMember> {
+    const s = await this.load()
+    const row = ok(
+      await this.db
+        .from('family_members')
+        .insert({
+          family_id: s.family.id,
+          first_name: input.firstName,
+          last_name: input.lastName,
+          relation: input.relation,
+          user_is: input.userIs,
+          birth_year: input.birthYear,
+          initials: initialsOf(input.firstName, input.lastName),
+          avatar_color: input.avatarColor,
+          sort_order: Math.max(0, ...s.rows.map((r) => r.sort_order)) + 1,
+        })
+        .select()
+        .single(),
+    )
+    this.changed()
+    return toMember(row, row.id, false)
+  }
+
+  async updateMember(memberId: string, patch: Partial<MemberInput>): Promise<FamilyMember> {
+    const s = await this.load()
+    const before = this.memberRow(s, memberId)
+    const isSelf = before.id === s.selfMemberId
+    const firstName = patch.firstName ?? before.first_name
+    const lastName = patch.lastName ?? before.last_name
+    // initials tell people apart ("MM", "MK"), so they only change with the name
+    const renamed = firstName !== before.first_name || lastName !== before.last_name
+    const initials = renamed ? initialsOf(firstName, lastName) : before.initials
+    const avatarColor = patch.avatarColor ?? before.avatar_color
+
+    const row = ok(
+      await this.db
+        .from('family_members')
+        .update({
+          first_name: firstName,
+          last_name: lastName,
+          relation: patch.relation ?? before.relation,
+          user_is: patch.userIs ?? before.user_is,
+          birth_year: patch.birthYear === undefined ? before.birth_year : patch.birthYear,
+          initials,
+          avatar_color: avatarColor,
+        })
+        .eq('id', before.id)
+        .select()
+        .maybeSingle(),
+    )
+    if (!row) throw new ServiceError('forbidden', 'This account cannot change that family member')
+    if (isSelf) {
+      ok(
+        await this.db
+          .from('app_users')
+          .update({ first_name: firstName, last_name: lastName, initials, avatar_color: avatarColor })
+          .eq('id', s.user.id)
+          .select('id')
+          .single(),
+      )
+    }
+    this.changed()
+    return toMember(row, isSelf ? s.user.id : row.id, isSelf)
+  }
+
+  async removeMember(memberId: string): Promise<void> {
+    const s = await this.load()
+    const row = this.memberRow(s, memberId)
+    if (row.id === s.selfMemberId) throw new ServiceError('forbidden', 'You cannot remove yourself from the family')
+    // their appointments, prep sheets, drafts and care circle rows go with them (on delete cascade)
+    const gone = ok(await this.db.from('family_members').delete().eq('id', row.id).select('id'))
+    if (!gone.length) throw new ServiceError('forbidden', 'This account cannot remove that family member')
+    this.changed()
+  }
+
+  async setCareCircle(memberId: string, notifyIds: string[]): Promise<string[]> {
+    const s = await this.load()
+    const about = this.memberRow(s, memberId)
+    const wanted = s.rows
+      .filter((r) => r.id !== about.id && r.id !== s.selfMemberId && notifyIds.includes(r.id))
+      .map((r) => r.id)
+    const current = ok(await this.db.from('care_circles').select('notify_member_id').eq('about_member_id', about.id))
+      .map((c) => c.notify_member_id)
+      .filter((id) => id !== s.selfMemberId)
+    const removed = current.filter((id) => !wanted.includes(id))
+    const added = wanted.filter((id) => !current.includes(id))
+    if (removed.length) {
+      ok(await this.db.from('care_circles').delete().eq('about_member_id', about.id).in('notify_member_id', removed).select())
+    }
+    if (added.length) {
+      ok(
+        await this.db
+          .from('care_circles')
+          .insert(added.map((id) => ({ about_member_id: about.id, notify_member_id: id })))
+          .select(),
+      )
+    }
+    this.changed()
+    return wanted
+  }
+
+  /* ---- settings ---- */
 
   async getSettings(): Promise<UserSettings> {
     const s = await this.load()
@@ -338,12 +459,13 @@ export class SupabaseAppStore implements AppStore {
 
   private toAppointment(s: Session, row: AppointmentRow): Appointment {
     // Who could take them: the user first, then the member's care circle.
-    const circle = s.family.careCircles[row.family_member_id] ?? []
+    const memberId = this.toPersonId(s, row.family_member_id)
+    const circle = s.family.careCircles[memberId] ?? []
     const escortOptions = row.kind === 'visit' ? [...new Set([s.user.id, ...circle])] : []
     return {
       id: row.id,
       familyId: row.family_id,
-      memberId: row.family_member_id,
+      memberId,
       kind: row.kind as Appointment['kind'],
       title: row.title,
       date: row.starts_on,
@@ -382,7 +504,7 @@ export class SupabaseAppStore implements AppStore {
   }
 
   async listToBookItems(familyId: string): Promise<ToBookItem[]> {
-    await this.load()
+    const s = await this.load()
     const rows = ok(
       await this.db
         .from('to_book_items')
@@ -391,7 +513,7 @@ export class SupabaseAppStore implements AppStore {
         .is('booked_appointment_id', null)
         .order('due_by'),
     )
-    return rows.map((r) => ({ id: r.id, familyId: r.family_id, memberId: r.family_member_id, title: r.title, dueBy: r.due_by }))
+    return rows.map((r) => ({ id: r.id, familyId: r.family_id, memberId: this.toPersonId(s, r.family_member_id), title: r.title, dueBy: r.due_by }))
   }
 
   async setAppointmentEscort(appointmentId: string, escortId: string | null): Promise<Appointment> {
