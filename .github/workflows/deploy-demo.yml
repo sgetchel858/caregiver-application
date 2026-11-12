@@ -45,14 +45,11 @@ jobs:
           # everything in the build is public.
           VITE_HEALTH_API: mock
           VITE_APP_STORE: mock
-          # Optional sign-in with the Cognatum account (app/README.md). Set these as
-          # repository VARIABLES (public values, not secrets); unset = no sign-in.
+          # Optional sign-in with the Cognatum account (app/README.md): set the
+          # repository VARIABLE VITE_AUTH=auth0. The Auth0 domain, client id and
+          # Cognatum URL come from app/.env; don't set them here, an empty value
+          # would override that file.
           VITE_AUTH: ${{ vars.VITE_AUTH || 'none' }}
-          VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
-          VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
-          VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE || 'https://sil-api' }}
-          VITE_SIL_API_URL: ${{ vars.VITE_SIL_API_URL }}
-          VITE_SIL_TENANT: ${{ vars.VITE_SIL_TENANT }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

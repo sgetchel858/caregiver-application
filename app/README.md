@@ -54,14 +54,13 @@ Everything in a `VITE_*` variable ends up in the public bundle, so never put a s
 
 With `VITE_AUTH=auth0` the app opens on a sign-in screen. The demo user signs in with their **Cognatum email and password** on Auth0's hosted page. Same Auth0 tenant, same user database, no separate account. The app then calls the Cognatum API as that user, in the workspace named by `VITE_SIL_TENANT` (e.g. `casante`). Every call carries `Authorization: Bearer <access token>` and `X-SIL-Tenant: <tenant id>` (`src/services/live/SilClient.ts`). Long-press the logo → **Cognatum → Test connection** to confirm it works: it calls `GET /auth/me` in the workspace and shows the account and roles SIL sees.
 
+The Auth0 domain (`attrilock.us.auth0.com`), the caregiver app's client id, the Cognatum URL and the `casante` workspace are already set in `app/.env`. Turning sign-in on locally only needs:
+
 ```bash
 # app/.env.local, local dev against beta
 VITE_AUTH=auth0
-VITE_AUTH0_DOMAIN=<beta's AUTH0_DOMAIN>
-VITE_AUTH0_CLIENT_ID=<the caregiver SPA client id, step 1 below>
 VITE_SIL_API_URL=/api/v1
 SIL_PROXY_TARGET=https://app.cognatum-demo.com
-VITE_SIL_TENANT=casante
 ```
 
 Locally, Vite proxies `/api/v1` to `SIL_PROXY_TARGET`, because beta's CORS never allows a `localhost` origin. The hosted build calls `VITE_SIL_API_URL=https://app.cognatum-demo.com/api/v1` directly.
@@ -77,7 +76,7 @@ Locally, Vite proxies `/api/v1` to `SIL_PROXY_TARGET`, because beta's CORS never
 3. **Auth0 → Actions → Login flow:** add the new client id wherever the Cognatum Actions list SIL clients: the roles Action that writes `https://sil.app/roles` and the `SIL_CLIENT_IDS` secret of the tenant-claim Action. **This one matters.** Cognatum re-syncs a user's Auth0-sourced roles from that claim on every request, so a token without it removes those roles from the account, in the Cognatum web app too.
 4. **Cognatum beta:** add `https://sgetchel858.github.io` to `CORS_ORIGINS` in beta's `.env` and restart the backend. Only the hosted build needs this; local dev goes through the proxy.
 5. The demo user must be an active member of the Casanté workspace in Cognatum.
-6. **GitHub Pages build (optional):** set repository **variables** (not secrets; these values are public): `VITE_AUTH=auth0`, `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, `VITE_SIL_API_URL`, `VITE_SIL_TENANT`. Without them the hosted demo stays offline with no sign-in.
+6. **GitHub Pages build (optional):** set the repository **variable** `VITE_AUTH=auth0` (Settings → Secrets and variables → Actions → Variables). Everything else comes from `app/.env`. Without it the hosted demo stays offline with no sign-in.
 
 **What Cognatum allows this token to do.** Cognatum counts only its own web app's tokens as a "human session" (ADR 152). A token issued to this app is treated as delegated, so it can read and query like the user, but approval routes, Ask's cached files and personal answer rules refuse it. Lifting that needs a Cognatum change and an ADR.
 
