@@ -80,6 +80,8 @@ Locally, Vite proxies `/api/v1` to `SIL_PROXY_TARGET`, because beta's CORS never
 
 **What Cognatum allows this token to do.** Cognatum counts only its own web app's tokens as a "human session" (ADR 152). A token issued to this app is treated as delegated, so it can read and query like the user, but approval routes, Ask's cached files and personal answer rules refuse it. Lifting that needs a Cognatum change and an ADR.
 
+**Idle sign-out.** A signed-in user is signed out after 10 minutes without a tap, key or scroll, with a one-minute "Still there?" warning first. The time away counts across tabs and while the app is closed. The limits are in `src/lib/idle.ts`. It does not apply when sign-in is off (`VITE_AUTH=none`).
+
 ## Supabase app store
 
 With `VITE_APP_STORE=supabase` the app keeps its own data (family, calendar, prep sheets, question lists, drafts, settings) in the "Casante Caregiver App" Supabase project instead of the browser. It needs `VITE_AUTH=auth0`: Supabase identifies the user by their Auth0 sign-in. The project URL and publishable key are in `app/.env`. Tables and rules: [DATA.md](DATA.md#part-2--app-store-supabase).
