@@ -29,6 +29,8 @@ export interface Auth {
   logout(): Promise<void>
   /** a short-lived access token for the Cognatum API; signs out if the session has ended */
   getAccessToken(): Promise<string>
+  /** the user's ID token, which Supabase trusts for the app store; refreshed with the session */
+  getIdToken(): Promise<string>
 
   /* useSyncExternalStore */
   subscribe(listener: () => void): () => void
@@ -44,6 +46,9 @@ export class NoAuth implements Auth {
   async login() {}
   async logout() {}
   async getAccessToken(): Promise<string> {
+    throw new Error('Sign-in is not configured (VITE_AUTH=none)')
+  }
+  async getIdToken(): Promise<string> {
     throw new Error('Sign-in is not configured (VITE_AUTH=none)')
   }
   subscribe() {

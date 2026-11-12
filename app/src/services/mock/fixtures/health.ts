@@ -12,6 +12,7 @@ import type {
   NewMedication,
   RecordDetail,
   Visit,
+  VisitReadinessItem,
 } from '../../types'
 import type { SceneId } from '../../demo/demoState'
 
@@ -298,5 +299,46 @@ export const followUpContent: Record<string, { inPerson: string[]; body: string;
     body: "Hi Dr. Reyes, Mom was seen at St. Luke's ER today and prescribed ciprofloxacin 500 mg twice a day for 7 days. She takes warfarin 5 mg every evening. Should her INR be checked this week? Thank you, Sarah (Margaret's daughter)",
     familySummary:
       "Mom was prescribed ciprofloxacin (an antibiotic) at St. Luke's ER today. It can make her warfarin stronger, so Sarah asked Dr. Reyes whether her INR should be checked this week.",
+  },
+}
+
+/* ---- calendar ---- */
+
+/** the agent's one-line week summary on the calendar tab, per scene */
+export const calendarSummaries: Record<SceneId, { text: string; visitLabels: { visitId: string; label: string }[] }> = {
+  m1: {
+    text: "One visit this week: Mom's neurology appointment tomorrow. Her prep sheet is ready.",
+    visitLabels: [{ visitId: 'v-okafor', label: 'Prep sheet ready' }],
+  },
+  m2: {
+    text: "No more visits this week. Mom is at St. Luke's ER today; her warfarin refill is due Nov 29.",
+    visitLabels: [],
+  },
+  m3: {
+    text: "No more visits this week. Mom is at St. Luke's ER today; her warfarin refill is due Nov 29.",
+    visitLabels: [],
+  },
+}
+
+/** what is ready for a visit, by Health API visit id */
+export const visitReadiness: Record<string, { items: VisitReadinessItem[]; afterVisitNote: string }> = {
+  'v-okafor': {
+    items: [
+      {
+        id: 'ready-prep',
+        kind: 'prep-sheet',
+        title: 'Prep sheet',
+        detail: 'Latest BP, 4 medications, 3 questions',
+        suggestedPins: [{ kind: 'vital', id: 'bp-2026-10-28' }],
+      },
+      {
+        id: 'ready-referral',
+        kind: 'record',
+        title: 'Referral from Dr. Yojansen',
+        detail: "Oct 28 · in Mom's MyChart",
+        recordId: 'rec-referral-neuro',
+      },
+    ],
+    afterVisitNote: "After the visit, I'll let you know when Dr. Okafor's notes arrive in Mom's MyChart and explain them in plain words.",
   },
 }

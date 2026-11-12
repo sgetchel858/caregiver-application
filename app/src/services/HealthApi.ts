@@ -1,5 +1,8 @@
 import type {
   AgentAnswer,
+  CalendarSummary,
+  DateRange,
+  VisitReadiness,
   AskRequest,
   AskSuggestions,
   CareTeamFollowUp,
@@ -50,4 +53,10 @@ export interface HealthApi {
   draftInteractionFollowUp(memberId: string, checkId: string): Promise<CareTeamFollowUp>
   /** only ever called after the user confirms in the UI */
   sendMessage(draft: MessageDraft): Promise<SentMessage>
+
+  /* ---- calendar ---- */
+  /** the agent's one-line read on these members' health events in the range */
+  getCalendarSummary(memberIds: string[], range: DateRange): Promise<CalendarSummary>
+  /** what is ready for a visit (prep sheet, referral…) and what the agent does afterwards */
+  getVisitReadiness(memberId: string, visitId: string): Promise<VisitReadiness>
 }

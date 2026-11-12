@@ -1,30 +1,415 @@
+import { createClient, type PostgrestError, type PostgrestSingleResponse, type SupabaseClient } from '@supabase/supabase-js'
 import type { AppStore } from '../AppStore'
+import type { Auth } from '../auth/Auth'
 import { ServiceError } from '../errors'
+import type {
+  Appointment,
+  AppUser,
+  DateRange,
+  Family,
+  FamilyMember,
+  FamilyUpdate,
+  MessageDraft,
+  PrepSheet,
+  QuestionList,
+  SavedPrepSheet,
+  ToBookItem,
+  UserSettings,
+} from '../types'
+import type { Database, Json } from './database.types'
+
+type Tables = Database['public']['Tables']
+type MemberRow = Tables['family_members']['Row']
+type AppointmentRow = Tables['appointments']['Row']
+type DraftRow = Tables['message_drafts']['Row']
+
+/** What the store needs to know about the signed-in user, loaded once per session. */
+interface Session {
+  user: AppUser
+  family: Family
+  /** every family_members row, including the user's own */
+  rows: MemberRow[]
+  /** the user's own family_members row */
+  selfMemberId: string | null
+}
+
+const DEFAULT_SETTINGS: UserSettings = { largeText: false, shareUpdatesByDefault: true }
+
+function fail(error: PostgrestError, status?: number): never {
+  if (status === 401 || error.code === 'PGRST301' || error.code === 'PGRST303') {
+    throw new ServiceError('unauthorized', error.message)
+  }
+  if (status === 403 || error.code === '42501') throw new ServiceError('forbidden', error.message)
+  // supabase-js reports a failed fetch as an error with no Postgres code
+  if (!error.code && /fetch|network/i.test(error.message)) throw new ServiceError('network', error.message)
+  throw new ServiceError('server', error.message)
+}
+
+/** Unwraps a supabase-js result, turning its error into a ServiceError. */
+function ok<T>(res: PostgrestSingleResponse<T>): T {
+  if (res.error) fail(res.error, res.status)
+  return res.data
+}
+
+const toJson = (v: unknown) => v as Json
 
 /**
- * Supabase-backed app store: NOT WIRED YET.
+ * Supabase-backed app store. Tables, row-level security and the demo seed are
+ * in supabase/migrations; the layout is described in DATA.md, Part 2.
  *
- * To implement:
- *   1. npm install @supabase/supabase-js
- *   2. createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
- *      (the anon key is public by design; protect every table with row-level security)
- *   3. Implement each method against the tables suggested in DATA.md.
+ * Supabase trusts the Auth0 sign-in (third-party auth): every request carries
+ * the user's Auth0 ID token, and row-level security keys off its `sub` claim.
  *
  * App data only: no medical records and no agent logic belong here.
  */
-const notYet = (method: string): Promise<never> =>
-  Promise.reject(new ServiceError('not-configured', `SupabaseAppStore.${method} is not implemented yet`))
-
 export class SupabaseAppStore implements AppStore {
-  getCurrentUser() { return notYet('getCurrentUser') }
-  getFamily() { return notYet('getFamily') }
-  getSettings() { return notYet('getSettings') }
-  updateSettings() { return notYet('updateSettings') }
-  getPrepSheet() { return notYet('getPrepSheet') }
-  savePrepSheet() { return notYet('savePrepSheet') }
-  getQuestionList() { return notYet('getQuestionList') }
-  saveQuestionList() { return notYet('saveQuestionList') }
-  listDrafts() { return notYet('listDrafts') }
-  saveDraft() { return notYet('saveDraft') }
-  createFamilyUpdate() { return notYet('createFamilyUpdate') }
+  private db: SupabaseClient<Database>
+  private session: Promise<Session> | null = null
+
+  constructor(url: string, publishableKey: string, auth: Auth) {
+    this.db = createClient<Database>(url, publishableKey, { accessToken: () => auth.getIdToken() })
+  }
+
+  /* ---- session ---- */
+
+  private load(): Promise<Session> {
+    this.session ??= this.loadSession().catch((e) => {
+      this.session = null // let the next call retry
+      throw e
+    })
+    return this.session
+  }
+
+  private async loadSession(): Promise<Session> {
+    // Demo: a first-time user gets their own copy of the Mitchell family.
+    const userId = ok(await this.db.rpc('bootstrap_demo_family'))
+
+    const [userRes, familyRes] = await Promise.all([
+      this.db.from('app_users').select('*').eq('id', userId).single(),
+      this.db.from('families').select('id, name, family_members(*)').order('created_at').limit(1).maybeSingle(),
+    ])
+    const u = ok(userRes)
+    const f = ok(familyRes)
+    if (!f) throw new ServiceError('not-found', 'This account has no family yet')
+
+    const rows = [...f.family_members].sort((a, b) => a.sort_order - b.sort_order)
+    const circles = ok(
+      await this.db
+        .from('care_circles')
+        .select('*')
+        .in('about_member_id', rows.map((r) => r.id)),
+    )
+
+    const user: AppUser = {
+      id: u.id,
+      firstName: u.first_name,
+      lastName: u.last_name,
+      initials: u.initials,
+      avatarColor: u.avatar_color,
+    }
+    const selfMemberId = rows.find((r) => r.app_user_id === user.id)?.id ?? null
+    const year = new Date().getFullYear()
+    const members: FamilyMember[] = rows
+      .filter((r) => r.id !== selfMemberId)
+      .map((r) => ({
+        id: r.id,
+        healthMemberId: r.health_member_id,
+        firstName: r.first_name,
+        relation: r.relation,
+        userIs: r.user_is,
+        age: r.birth_year ? year - r.birth_year : 0,
+        initials: r.initials,
+        avatarColor: r.avatar_color,
+      }))
+
+    // Screens look a care circle up by the member's id or by their Health API id.
+    const careCircles: Record<string, string[]> = {}
+    for (const c of circles) {
+      const about = rows.find((r) => r.id === c.about_member_id)
+      const notify = c.notify_member_id === selfMemberId ? user.id : c.notify_member_id
+      for (const key of [c.about_member_id, about?.health_member_id]) {
+        if (key) (careCircles[key] ??= []).push(notify)
+      }
+    }
+
+    return { user, family: { id: f.id, name: f.name, members, careCircles }, rows, selfMemberId }
+  }
+
+  /** The family_members row for a member's id or their Health API id. */
+  private memberRow(s: Session, memberId: string): MemberRow {
+    const row = s.rows.find((r) => r.id === memberId) ?? s.rows.find((r) => r.health_member_id === memberId)
+    if (!row) throw new ServiceError('not-found', `No family member "${memberId}"`)
+    return row
+  }
+
+  /** family_members.id for the user's id or a member's id. */
+  private toMemberId(s: Session, personId: string): string {
+    if (personId === s.user.id) {
+      if (!s.selfMemberId) throw new ServiceError('server', 'The signed-in user has no family member row')
+      return s.selfMemberId
+    }
+    return this.memberRow(s, personId).id
+  }
+
+  /** The user's id for their own row, the member's id otherwise. */
+  private toPersonId(s: Session, memberId: string): string {
+    return memberId === s.selfMemberId ? s.user.id : memberId
+  }
+
+  /* ---- user, family, settings ---- */
+
+  async getCurrentUser(): Promise<AppUser> {
+    return (await this.load()).user
+  }
+
+  async getFamily(): Promise<Family> {
+    return (await this.load()).family
+  }
+
+  async getSettings(): Promise<UserSettings> {
+    const s = await this.load()
+    const row = ok(await this.db.from('user_settings').select('*').eq('app_user_id', s.user.id).maybeSingle())
+    return row ? { largeText: row.large_text, shareUpdatesByDefault: row.share_updates_by_default } : DEFAULT_SETTINGS
+  }
+
+  async updateSettings(patch: Partial<UserSettings>): Promise<UserSettings> {
+    const s = await this.load()
+    const next = { ...(await this.getSettings()), ...patch }
+    ok(
+      await this.db
+        .from('user_settings')
+        .upsert({ app_user_id: s.user.id, large_text: next.largeText, share_updates_by_default: next.shareUpdatesByDefault })
+        .select()
+        .single(),
+    )
+    return next
+  }
+
+  /* ---- prep sheets and question lists ---- */
+
+  async getPrepSheet(memberId: string, visitId: string): Promise<SavedPrepSheet | null> {
+    const s = await this.load()
+    const row = ok(
+      await this.db
+        .from('prep_sheets')
+        .select('sheet, saved_at')
+        .eq('family_member_id', this.memberRow(s, memberId).id)
+        .eq('visit_id', visitId)
+        .maybeSingle(),
+    )
+    if (!row?.sheet) return null
+    return { memberId, visitId, sheet: row.sheet as unknown as PrepSheet, savedAt: row.saved_at }
+  }
+
+  async savePrepSheet(sheet: SavedPrepSheet): Promise<SavedPrepSheet> {
+    const s = await this.load()
+    const pins = sheet.sheet.sections.flatMap((sec) =>
+      sec.type === 'vital' ? [{ kind: 'vital', id: sec.reading.id, pinnedAt: sec.pinnedAt ?? null }] : [],
+    )
+    ok(
+      await this.db
+        .from('prep_sheets')
+        .upsert(
+          {
+            family_member_id: this.memberRow(s, sheet.memberId).id,
+            visit_id: sheet.visitId,
+            pins: toJson(pins),
+            sheet: toJson(sheet.sheet),
+            saved_by: s.user.id,
+            saved_at: sheet.savedAt,
+          },
+          { onConflict: 'family_member_id,visit_id' },
+        )
+        .select('id')
+        .single(),
+    )
+    return sheet
+  }
+
+  async getQuestionList(memberId: string, visitId: string): Promise<QuestionList | null> {
+    const s = await this.load()
+    const row = ok(
+      await this.db
+        .from('question_lists')
+        .select('items, updated_at')
+        .eq('family_member_id', this.memberRow(s, memberId).id)
+        .eq('visit_id', visitId)
+        .maybeSingle(),
+    )
+    if (!row) return null
+    return { memberId, visitId, items: row.items as unknown as QuestionList['items'], updatedAt: row.updated_at }
+  }
+
+  async saveQuestionList(list: QuestionList): Promise<QuestionList> {
+    const s = await this.load()
+    const row = ok(
+      await this.db
+        .from('question_lists')
+        .upsert({
+          family_member_id: this.memberRow(s, list.memberId).id,
+          visit_id: list.visitId,
+          items: toJson(list.items),
+          updated_at: new Date().toISOString(),
+        })
+        .select('updated_at')
+        .single(),
+    )
+    return { ...list, updatedAt: row.updated_at }
+  }
+
+  /* ---- message drafts and family updates ---- */
+
+  private toDraft(row: DraftRow, memberId: string): MessageDraft {
+    return {
+      id: row.draft_key,
+      memberId,
+      to: { clinicianId: row.to_clinician_id, name: row.to_name, role: row.to_role },
+      channel: 'MyChart',
+      body: row.body ?? '',
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      ...(row.about_kind === 'interaction-check' && row.about_id
+        ? { about: { kind: 'interaction-check' as const, id: row.about_id } }
+        : {}),
+    }
+  }
+
+  async listDrafts(memberId: string): Promise<MessageDraft[]> {
+    const s = await this.load()
+    const rows = ok(
+      await this.db
+        .from('message_drafts')
+        .select('*')
+        .eq('family_member_id', this.memberRow(s, memberId).id)
+        .order('created_at'),
+    )
+    return rows.map((r) => this.toDraft(r, memberId))
+  }
+
+  async saveDraft(draft: MessageDraft): Promise<MessageDraft> {
+    const s = await this.load()
+    const row = ok(
+      await this.db
+        .from('message_drafts')
+        .upsert(
+          {
+            family_member_id: this.memberRow(s, draft.memberId).id,
+            draft_key: draft.id,
+            to_clinician_id: draft.to.clinicianId,
+            to_name: draft.to.name,
+            to_role: draft.to.role,
+            channel: draft.channel,
+            body: draft.body,
+            about_kind: draft.about?.kind ?? null,
+            about_id: draft.about?.id ?? null,
+            created_by: s.user.id,
+            created_at: draft.createdAt,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'family_member_id,draft_key' },
+        )
+        .select()
+        .single(),
+    )
+    return this.toDraft(row, draft.memberId)
+  }
+
+  async createFamilyUpdate(update: Omit<FamilyUpdate, 'id' | 'createdAt'>): Promise<FamilyUpdate> {
+    const s = await this.load()
+    const row = ok(
+      await this.db
+        .from('family_updates')
+        .insert({
+          family_id: s.family.id,
+          from_user_id: s.user.id,
+          about_member_id: this.memberRow(s, update.aboutMemberId).id,
+          to_member_ids: update.toMemberIds.map((id) => this.toMemberId(s, id)),
+          summary: update.summary,
+          ref_kind: update.ref.kind,
+          ref_id: update.ref.id,
+        })
+        .select('id, created_at')
+        .single(),
+    )
+    return { ...update, id: row.id, createdAt: row.created_at }
+  }
+
+  /* ---- calendar ---- */
+
+  private toAppointment(s: Session, row: AppointmentRow): Appointment {
+    // Who could take them: the user first, then the member's care circle.
+    const circle = s.family.careCircles[row.family_member_id] ?? []
+    const escortOptions = row.kind === 'visit' ? [...new Set([s.user.id, ...circle])] : []
+    return {
+      id: row.id,
+      familyId: row.family_id,
+      memberId: row.family_member_id,
+      kind: row.kind as Appointment['kind'],
+      title: row.title,
+      date: row.starts_on,
+      startsAt: row.starts_at,
+      place: row.place,
+      placePhone: row.place_phone,
+      note: row.note,
+      healthVisitId: row.health_visit_id,
+      escortId: row.escort_member_id ? this.toPersonId(s, row.escort_member_id) : null,
+      escortOptions,
+    }
+  }
+
+  async listAppointments(familyId: string, range: DateRange): Promise<Appointment[]> {
+    const s = await this.load()
+    const rows = ok(
+      await this.db
+        .from('appointments')
+        .select('*')
+        .eq('family_id', familyId)
+        .gte('starts_on', range.from)
+        .lte('starts_on', range.to),
+    )
+    return rows
+      .map((r) => this.toAppointment(s, r))
+      .sort((a, b) => (a.startsAt ?? a.date).localeCompare(b.startsAt ?? b.date))
+  }
+
+  async getAppointment(appointmentId: string): Promise<Appointment | null> {
+    const s = await this.load()
+    const res = await this.db.from('appointments').select('*').eq('id', appointmentId).maybeSingle()
+    // an id that isn't a uuid (an old link from the mock store) is simply not found
+    if (res.error?.code === '22P02') return null
+    const row = ok(res)
+    return row ? this.toAppointment(s, row) : null
+  }
+
+  async listToBookItems(familyId: string): Promise<ToBookItem[]> {
+    await this.load()
+    const rows = ok(
+      await this.db
+        .from('to_book_items')
+        .select('*')
+        .eq('family_id', familyId)
+        .is('booked_appointment_id', null)
+        .order('due_by'),
+    )
+    return rows.map((r) => ({ id: r.id, familyId: r.family_id, memberId: r.family_member_id, title: r.title, dueBy: r.due_by }))
+  }
+
+  async setAppointmentEscort(appointmentId: string, escortId: string | null): Promise<Appointment> {
+    const s = await this.load()
+    const appt = await this.getAppointment(appointmentId)
+    if (!appt) throw new ServiceError('not-found', 'Appointment not found')
+    if (escortId !== null && !appt.escortOptions.includes(escortId)) {
+      throw new ServiceError('server', 'That person is not in the care circle for this visit')
+    }
+    const row = ok(
+      await this.db
+        .from('appointments')
+        .update({ escort_member_id: escortId === null ? null : this.toMemberId(s, escortId) })
+        .eq('id', appointmentId)
+        .select()
+        .maybeSingle(),
+    )
+    if (!row) throw new ServiceError('forbidden', 'This account cannot change that appointment')
+    return this.toAppointment(s, row)
+  }
 }

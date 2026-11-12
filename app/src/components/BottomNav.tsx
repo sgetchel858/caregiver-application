@@ -1,14 +1,16 @@
+import { useNavigate } from 'react-router'
 import { Icon, type IconName } from './Icon'
 import { useUI } from '../lib/ui'
 
-const ITEMS: { label: string; icon: IconName }[] = [
-  { label: 'Family', icon: 'family' },
-  { label: 'Calendar', icon: 'calendar' },
+const ITEMS: { label: string; icon: IconName; to?: string }[] = [
+  { label: 'Family', icon: 'family', to: '/' },
+  { label: 'Calendar', icon: 'calendar', to: '/calendar' },
   { label: 'Settings', icon: 'settings' },
 ]
 
 export function BottomNav({ current = 'Family' }: { current?: string }) {
   const { toast } = useUI()
+  const navigate = useNavigate()
   return (
     <nav className="bottom-nav" aria-label="Main">
       <div className="bottom-nav__inner">
@@ -19,7 +21,10 @@ export function BottomNav({ current = 'Family' }: { current?: string }) {
               key={it.label}
               className="bottom-nav__item"
               aria-current={active ? 'page' : undefined}
-              onClick={() => !active && toast(`${it.label} isn't part of this demo.`)}
+              onClick={() => {
+                if (it.to) navigate(it.to)
+                else toast(`${it.label} isn't part of this demo.`)
+              }}
             >
               <span className="bottom-nav__pill">
                 <Icon name={it.icon} size={22} strokeWidth={1.8} color={active ? '#012E4D' : '#535458'} />

@@ -1,15 +1,19 @@
 import type { AppStore } from '../AppStore'
 import type {
+  Appointment,
   AppUser,
+  DateRange,
   Family,
   FamilyUpdate,
   MessageDraft,
   QuestionList,
   SavedPrepSheet,
+  ToBookItem,
   UserSettings,
 } from '../types'
 import { simulate } from './latency'
-import { currentUser, defaultSettings, family } from './fixtures/app'
+import { ServiceError } from '../errors'
+import { appointments, currentUser, defaultSettings, family, toBookItems } from './fixtures/app'
 
 /**
  * Mock app store backed by localStorage (per browser), seeded from fixtures.
@@ -23,6 +27,8 @@ interface Tables {
   questionLists: Record<string, QuestionList>
   drafts: Record<string, MessageDraft>
   familyUpdates: FamilyUpdate[]
+  /** escort choices made in the demo, over the fixture appointments: appointmentId -> escortId */
+  appointmentEscorts: Record<string, string | null>
 }
 
 const EMPTY: Tables = {
@@ -31,6 +37,7 @@ const EMPTY: Tables = {
   questionLists: {},
   drafts: {},
   familyUpdates: [],
+  appointmentEscorts: {},
 }
 
 function read<K extends keyof Tables>(table: K): Tables[K] {
@@ -62,6 +69,12 @@ export function resetMockAppStore() {
 }
 
 const key = (memberId: string, visitId: string) => `${memberId}:${visitId}`
+
+/** fixture appointments with the saved escort choices applied */
+function allAppointments(): Appointment[] {
+  const escorts = read('appointmentEscorts')
+  return appointments.map((a) => (a.id in escorts ? { ...a, escortId: escorts[a.id] } : a))
+}
 
 export class MockAppStore implements AppStore {
   getCurrentUser(): Promise<AppUser> {
@@ -134,6 +147,34 @@ export class MockAppStore implements AppStore {
       }
       write('familyUpdates', [...read('familyUpdates'), created])
       return created
+    }, 'write')
+  }
+
+  listAppointments(familyId: string, range: DateRange): Promise<Appointment[]> {
+    return simulate(() =>
+      allAppointments()
+        .filter((a) => a.familyId === familyId && a.date >= range.from && a.date <= range.to)
+        .sort((a, b) => (a.startsAt ?? a.date).localeCompare(b.startsAt ?? b.date)),
+    )
+  }
+
+  getAppointment(appointmentId: string): Promise<Appointment | null> {
+    return simulate(() => allAppointments().find((a) => a.id === appointmentId) ?? null)
+  }
+
+  listToBookItems(familyId: string): Promise<ToBookItem[]> {
+    return simulate(() => toBookItems.filter((t) => t.familyId === familyId).sort((a, b) => a.dueBy.localeCompare(b.dueBy)))
+  }
+
+  setAppointmentEscort(appointmentId: string, escortId: string | null): Promise<Appointment> {
+    return simulate(() => {
+      const appt = allAppointments().find((a) => a.id === appointmentId)
+      if (!appt) throw new ServiceError('not-found', 'Appointment not found')
+      if (escortId !== null && !appt.escortOptions.includes(escortId)) {
+        throw new ServiceError('server', 'That person is not in the care circle for this visit')
+      }
+      write('appointmentEscorts', { ...read('appointmentEscorts'), [appointmentId]: escortId })
+      return { ...appt, escortId }
     }, 'write')
   }
 }

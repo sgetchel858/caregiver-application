@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 import { Header } from '../components/Header'
-import { Async, ErrorState, Skeleton } from '../components/Feedback'
+import { Async, Skeleton } from '../components/Feedback'
 import { Icon } from '../components/Icon'
 import { Sheet } from '../components/Sheet'
+import { ShareSheet } from '../components/ShareSheet'
 import { SourceChips } from '../components/Agent'
 import { Rich } from '../lib/rich'
 import { useServices } from '../lib/services'
-import { useAsync, useAction } from '../lib/useAsync'
+import { useAsync } from '../lib/useAsync'
 import { useUI } from '../lib/ui'
 import { joinNames, monthDay, relativeDay, time, weekdayMonthDay } from '../lib/format'
-import type { Family, PrepPin, PrepSheet, PrepSection, QuestionList, SavedPrepSheet } from '../services/types'
+import type { PrepPin, PrepSheet, PrepSection, QuestionList, SavedPrepSheet } from '../services/types'
 
 const pinsOf = (sheet: PrepSheet): PrepPin[] =>
   sheet.sections.flatMap((s) => (s.type === 'vital' ? [{ kind: 'vital' as const, id: s.reading.id }] : []))
@@ -148,68 +149,6 @@ function QuestionsCard({ title, list, onChange }: { title: string; list: Questio
   )
 }
 
-function ShareSheet({
-  family,
-  aboutMemberId,
-  summary,
-  sheetId,
-  onClose,
-}: {
-  family: Family
-  aboutMemberId: string
-  summary: string
-  sheetId: string
-  onClose: (sentTo?: string[]) => void
-}) {
-  const { store } = useServices()
-  const candidates = family.members.filter((m) => m.age >= 18 && m.healthMemberId !== aboutMemberId)
-  const [picked, setPicked] = useState<string[]>(family.careCircles[aboutMemberId] ?? [])
-  const send = useAction(async () => {
-    const user = await store.getCurrentUser()
-    await store.createFamilyUpdate({
-      fromUserId: user.id,
-      aboutMemberId,
-      toMemberIds: picked,
-      summary,
-      ref: { kind: 'prep-sheet', id: sheetId },
-    })
-    onClose(picked)
-  })
-  return (
-    <Sheet
-      title="Share with family"
-      onClose={() => onClose()}
-      footer={
-        <>
-          {!!send.error && <ErrorState error={send.error} title="Couldn't share" />}
-          <button className="btn btn--primary btn--48" disabled={!picked.length || send.pending} onClick={() => send.run()}>
-            {send.pending ? 'Sharing…' : `Share with ${joinNames(candidates.filter((c) => picked.includes(c.id)).map((c) => c.firstName)) || '…'}`}
-          </button>
-          <p className="small muted" style={{ margin: 0, textAlign: 'center' }}>
-            Only the people you pick will see it.
-          </p>
-        </>
-      }
-    >
-      <div className="stack">
-        {candidates.map((c) => (
-          <label key={c.id} className="check-row">
-            <input
-              type="checkbox"
-              checked={picked.includes(c.id)}
-              onChange={(e) => setPicked((p) => (e.target.checked ? [...p, c.id] : p.filter((x) => x !== c.id)))}
-            />
-            <span>
-              {c.firstName} · {c.relation}
-            </span>
-          </label>
-        ))}
-      </div>
-      <div className="note">{summary}</div>
-    </Sheet>
-  )
-}
-
 export function PrepSheetScreen() {
   const { memberId = '', visitId = '' } = useParams()
   const [params] = useSearchParams()
@@ -323,7 +262,7 @@ export function PrepSheetScreen() {
                       family={family}
                       aboutMemberId={memberId}
                       summary={sheet.shareSummary}
-                      sheetId={sheet.id}
+                      refTo={{ kind: 'prep-sheet', id: sheet.id }}
                       onClose={(sentTo) => {
                         setShareOpen(false)
                         if (sentTo?.length) {

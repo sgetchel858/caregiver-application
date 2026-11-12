@@ -1,6 +1,9 @@
 import type { HealthApi } from '../HealthApi'
 import type {
   AgentAnswer,
+  CalendarSummary,
+  DateRange,
+  VisitReadiness,
   AskRequest,
   AskSuggestions,
   CareTeamFollowUp,
@@ -136,5 +139,14 @@ export class LiveHealthApi implements HealthApi {
   }
   sendMessage(draft: MessageDraft) {
     return this.request<SentMessage>('POST', `/messages`, draft)
+  }
+  getCalendarSummary(memberIds: string[], range: DateRange) {
+    return this.request<CalendarSummary>(
+      'GET',
+      `/family/calendar-summary?members=${memberIds.map(encodeURIComponent).join(',')}&from=${range.from}&to=${range.to}`,
+    )
+  }
+  getVisitReadiness(memberId: string, visitId: string) {
+    return this.request<VisitReadiness>('GET', `${this.m(memberId)}/visits/${encodeURIComponent(visitId)}/readiness`)
   }
 }

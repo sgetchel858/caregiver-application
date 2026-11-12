@@ -1,16 +1,19 @@
 import type {
+  Appointment,
   AppUser,
+  DateRange,
   Family,
   FamilyUpdate,
   MessageDraft,
   QuestionList,
   SavedPrepSheet,
+  ToBookItem,
   UserSettings,
 } from './types'
 
 /**
- * App store: app data only (family, saved prep sheets, question lists,
- * message drafts, settings). No medical records and no agent logic.
+ * App store: app data only (family, calendar, saved prep sheets, question
+ * lists, message drafts, settings). No medical records and no agent logic.
  * Real implementation: Supabase (stub in ./live/SupabaseAppStore.ts).
  */
 export interface AppStore {
@@ -29,4 +32,13 @@ export interface AppStore {
   saveDraft(draft: MessageDraft): Promise<MessageDraft>
 
   createFamilyUpdate(update: Omit<FamilyUpdate, 'id' | 'createdAt'>): Promise<FamilyUpdate>
+
+  /* ---- calendar ---- */
+  /** a family's appointments with a date inside the range, oldest first */
+  listAppointments(familyId: string, range: DateRange): Promise<Appointment[]>
+  getAppointment(appointmentId: string): Promise<Appointment | null>
+  /** things that still need booking, soonest due first */
+  listToBookItems(familyId: string): Promise<ToBookItem[]>
+  /** who is taking the member to a visit: the user's id, a family member's id, or null */
+  setAppointmentEscort(appointmentId: string, escortId: string | null): Promise<Appointment>
 }

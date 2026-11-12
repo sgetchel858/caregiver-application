@@ -2,6 +2,9 @@ import type { HealthApi } from '../HealthApi'
 import type { Clock } from '../Clock'
 import type {
   AgentAnswer,
+  CalendarSummary,
+  DateRange,
+  VisitReadiness,
   AskRequest,
   AskSuggestions,
   CareTeamFollowUp,
@@ -432,5 +435,24 @@ export class MockHealthApi implements HealthApi {
       // Demo: nothing leaves the browser.
       return { id: `msg-${draft.id}`, sentAt: new Date().toISOString(), status: 'sent' as const }
     }, 'write')
+  }
+
+  getCalendarSummary(memberIds: string[], range: DateRange): Promise<CalendarSummary> {
+    return simulate(() => {
+      const c = fx.calendarSummaries[this.scene()]
+      const inRange = (visitId: string) =>
+        memberIds.some((id) =>
+          (fx.visits[id] ?? []).some((v) => v.id === visitId && v.startsAt.slice(0, 10) >= range.from && v.startsAt.slice(0, 10) <= range.to),
+        )
+      return { text: c.text, visitLabels: c.visitLabels.filter((l) => inRange(l.visitId)) }
+    })
+  }
+
+  getVisitReadiness(memberId: string, visitId: string): Promise<VisitReadiness> {
+    return simulate(() => {
+      this.profileOf(memberId)
+      const r = need(fx.visitReadiness[visitId], 'Visit')
+      return { memberId, visitId, ...r }
+    })
   }
 }

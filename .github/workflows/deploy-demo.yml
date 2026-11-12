@@ -41,10 +41,13 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE: ${{ steps.pages.outputs.base_path }}/
-          # The public demo runs on the mock services. No secrets here:
-          # everything in the build is public.
+          # Medical information and the agent run on the mock Health API. App
+          # data (family, calendar, prep sheets…) is in Supabase, which needs
+          # sign-in: keep the repository VARIABLE VITE_AUTH=auth0 set. To go
+          # back to the fully offline demo, set VITE_APP_STORE to mock.
+          # No secrets here: everything in the build is public.
           VITE_HEALTH_API: mock
-          VITE_APP_STORE: mock
+          VITE_APP_STORE: supabase
           # Optional sign-in with the Cognatum account (app/README.md): set the
           # repository VARIABLE VITE_AUTH=auth0. The Auth0 domain, client id and
           # Cognatum URL come from app/.env; don't set them here, an empty value

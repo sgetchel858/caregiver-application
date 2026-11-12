@@ -1,5 +1,5 @@
-/** App store fixtures: the family and the user. No medical data here. */
-import type { AppUser, Family, UserSettings } from '../../types'
+/** App store fixtures: the family, the user and the family calendar. No medical records here. */
+import type { Appointment, AppUser, Family, ToBookItem, UserSettings } from '../../types'
 
 export const currentUser: AppUser = {
   id: 'sarah',
@@ -26,3 +26,59 @@ export const defaultSettings: UserSettings = {
   largeText: false,
   shareUpdatesByDefault: true,
 }
+
+/**
+ * Calendar, from FLOW.md "Calendar (as of Wed, Nov 11)". Dad and Leo have
+ * nothing scheduled. The Riverside Neurology phone number is made up.
+ */
+export const appointments: Appointment[] = [
+  {
+    id: 'appt-okafor',
+    familyId: 'fam-mitchell',
+    memberId: 'margaret',
+    kind: 'visit',
+    title: 'Neurology with Dr. Okafor',
+    date: '2026-11-12',
+    startsAt: '2026-11-12T10:30:00',
+    place: 'Riverside Neurology',
+    placePhone: '(555) 014-3300',
+    note: 'first visit, hand tremor',
+    healthVisitId: 'v-okafor',
+    escortId: 'sarah',
+    escortOptions: ['sarah', 'robert', 'mike'],
+  },
+  {
+    id: 'appt-warfarin-refill',
+    familyId: 'fam-mitchell',
+    memberId: 'margaret',
+    kind: 'refill',
+    title: 'Warfarin refill due',
+    date: '2026-11-29',
+    startsAt: null,
+    place: 'Main Street Pharmacy',
+    placePhone: null,
+    note: null,
+    healthVisitId: null,
+    escortId: null,
+    escortOptions: [],
+  },
+  {
+    id: 'appt-emma-physical',
+    familyId: 'fam-mitchell',
+    memberId: 'emma',
+    kind: 'visit',
+    title: 'Annual physical',
+    date: '2026-12-03',
+    startsAt: '2026-12-03T15:45:00',
+    place: null,
+    placePhone: null,
+    note: null,
+    healthVisitId: null,
+    escortId: null,
+    escortOptions: ['sarah', 'mike'],
+  },
+]
+
+export const toBookItems: ToBookItem[] = [
+  { id: 'book-mike-flu', familyId: 'fam-mitchell', memberId: 'mike', title: 'Flu shot', dueBy: '2026-11-30' },
+]

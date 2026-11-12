@@ -125,4 +125,11 @@ export class Auth0Auth implements Auth {
       throw e
     }
   }
+
+  async getIdToken(): Promise<string> {
+    await this.getAccessToken() // refreshes the session, and with it the ID token, when it has expired
+    const claims = await this.client.getIdTokenClaims()
+    if (!claims?.__raw) throw new Error('Auth0 returned no ID token')
+    return claims.__raw
+  }
 }

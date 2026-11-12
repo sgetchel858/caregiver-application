@@ -44,7 +44,7 @@ npm run preview                                 # serve dist/ locally
 | | Mock (default) | Real |
 |---|---|---|
 | Health API | `VITE_HEALTH_API=mock` | `VITE_HEALTH_API=live` + `VITE_HEALTH_API_URL=https://…` |
-| App store | `VITE_APP_STORE=mock` | `VITE_APP_STORE=supabase` (finish `src/services/live/SupabaseAppStore.ts` first) |
+| App store | `VITE_APP_STORE=mock` | `VITE_APP_STORE=supabase` + `VITE_AUTH=auth0` ([setup](#supabase-app-store)) |
 
 Set these in `app/.env.local` (see `.env.example`) or in the workflow's `env:` block. The contract for both is in [DATA.md](DATA.md).
 
@@ -79,6 +79,33 @@ Locally, Vite proxies `/api/v1` to `SIL_PROXY_TARGET`, because beta's CORS never
 6. **GitHub Pages build (optional):** set the repository **variable** `VITE_AUTH=auth0` (Settings → Secrets and variables → Actions → Variables). Everything else comes from `app/.env`. Without it the hosted demo stays offline with no sign-in.
 
 **What Cognatum allows this token to do.** Cognatum counts only its own web app's tokens as a "human session" (ADR 152). A token issued to this app is treated as delegated, so it can read and query like the user, but approval routes, Ask's cached files and personal answer rules refuse it. Lifting that needs a Cognatum change and an ADR.
+
+## Supabase app store
+
+With `VITE_APP_STORE=supabase` the app keeps its own data (family, calendar, prep sheets, question lists, drafts, settings) in the "Casante Caregiver App" Supabase project instead of the browser. It needs `VITE_AUTH=auth0`: Supabase identifies the user by their Auth0 sign-in. The project URL and publishable key are in `app/.env`. Tables and rules: [DATA.md](DATA.md#part-2--app-store-supabase).
+
+```
+# app/.env.local
+VITE_AUTH=auth0
+VITE_APP_STORE=supabase
+```
+
+**Demo data only.** The database holds the fictional Mitchell family. Do not put real people's health details in it.
+
+**One-time setup**
+
+1. **Supabase → Authentication → Sign In / Providers → Third-Party Auth → Add provider → Auth0:** tenant `attrilock`, region `US`.
+2. **Auth0 → Actions → Library → Create Action** (trigger: Login / Post Login), then add it to the Login flow. Supabase needs a `role` claim to treat the token as a signed-in user. The Action only touches this app's ID token, so the Cognatum access token and other apps in the tenant are unchanged:
+
+   ```js
+   exports.onExecutePostLogin = async (event, api) => {
+     if (event.client.client_id !== '<the caregiver app client id, VITE_AUTH0_CLIENT_ID>') return
+     api.idToken.setCustomClaim('role', 'authenticated')
+   }
+   ```
+3. Sign out of the app and back in, so the new claim is in the token.
+
+**Changing the database.** Add a SQL file under `app/supabase/migrations/`, then from `app/`: `supabase db push`, and `supabase gen types typescript --linked > src/services/live/database.types.ts`.
 
 ## Where things live
 

@@ -351,6 +351,37 @@ export interface SentMessage {
   status: 'sent'
 }
 
+/* ---- calendar (agent) ---- */
+
+/** The agent's read on the family's week, for the calendar tab. */
+export interface CalendarSummary {
+  /** rich; one line, e.g. "One visit this week: …" */
+  text: string
+  /** short agent labels for visits in the range, e.g. "Prep sheet ready" */
+  visitLabels: { visitId: string; label: string }[]
+}
+
+export interface VisitReadinessItem {
+  id: string
+  kind: 'prep-sheet' | 'record'
+  /** "Prep sheet", "Referral from Dr. Yojansen" */
+  title: string
+  /** "Latest BP, 4 medications, 3 questions" */
+  detail: string
+  /** kind "record": the record to open */
+  recordId?: string
+  /** kind "prep-sheet": what the agent would put on the sheet */
+  suggestedPins?: PrepPin[]
+}
+
+/** What is ready for an upcoming visit, and what the agent will do afterwards. */
+export interface VisitReadiness {
+  memberId: string
+  visitId: string
+  items: VisitReadinessItem[]
+  afterVisitNote: string
+}
+
 /* ------------------------------------------------------------------ */
 /* App store: app data only (no medical records)                       */
 /* ------------------------------------------------------------------ */
@@ -410,6 +441,48 @@ export interface FamilyUpdate {
   aboutMemberId: string
   toMemberIds: string[]
   summary: string
-  ref: { kind: 'prep-sheet' | 'message' | 'interaction-check'; id: string }
+  ref: { kind: 'prep-sheet' | 'message' | 'interaction-check' | 'appointment'; id: string }
   createdAt: string
+}
+
+/* ---- calendar (app store) ---- */
+
+/** inclusive on both ends */
+export interface DateRange {
+  from: ISODate
+  to: ISODate
+}
+
+/** A dated health event on the family calendar. Health events only. */
+export interface Appointment {
+  id: string
+  familyId: string
+  /** FamilyMember.id */
+  memberId: string
+  kind: 'visit' | 'refill'
+  /** "Neurology with Dr. Okafor", "Warfarin refill due" */
+  title: string
+  date: ISODate
+  /** null = no set time (a refill due date) */
+  startsAt: LocalDateTime | null
+  /** "Riverside Neurology" */
+  place: string | null
+  placePhone: string | null
+  /** "first visit, hand tremor" */
+  note: string | null
+  /** Health API visit id, when the visit is in the member's records */
+  healthVisitId: string | null
+  /** who is taking them: the user's id or a FamilyMember.id */
+  escortId: string | null
+  /** who could take them: the user first, then the member's care circle */
+  escortOptions: string[]
+}
+
+/** Something that still needs booking ("Flu shot · due this month"). */
+export interface ToBookItem {
+  id: string
+  familyId: string
+  memberId: string
+  title: string
+  dueBy: ISODate
 }

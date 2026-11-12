@@ -18,6 +18,8 @@ import { AddMedication } from './screens/AddMedication'
 import { InteractionCheckScreen } from './screens/InteractionCheckScreen'
 import { InteractionResult } from './screens/InteractionResult'
 import { AskCareTeam } from './screens/AskCareTeam'
+import { FamilyCalendar } from './screens/FamilyCalendar'
+import { VisitDetail } from './screens/VisitDetail'
 import { NotFound } from './screens/NotFound'
 
 const services = createServices()
@@ -67,6 +69,8 @@ function Shell() {
               <Route path="/m/:memberId/meds/check/:checkId" element={<InteractionCheckScreen />} />
               <Route path="/m/:memberId/meds/check/:checkId/result" element={<InteractionResult />} />
               <Route path="/m/:memberId/meds/check/:checkId/care-team" element={<AskCareTeam />} />
+              <Route path="/calendar" element={<FamilyCalendar />} />
+              <Route path="/calendar/visit/:appointmentId" element={<VisitDetail />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </ThreadsProvider>

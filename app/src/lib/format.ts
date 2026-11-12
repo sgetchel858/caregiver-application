@@ -61,3 +61,36 @@ export function joinNames(names: string[]): string {
   if (names.length <= 1) return names.join('')
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
+
+/* ---- calendar ---- */
+
+/** "2026-11-12" for a local date */
+export function toISODate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+export function addDays(d: Date, days: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days)
+}
+
+/** the Sunday on or before this day */
+export function startOfWeek(d: Date): Date {
+  return addDays(d, -d.getDay())
+}
+
+/** first day of the month, `offset` months away */
+export function startOfMonth(d: Date, offset = 0): Date {
+  return new Date(d.getFullYear(), d.getMonth() + offset, 1)
+}
+
+/** "November 2026" */
+export const monthLong = f({ month: 'long', year: 'numeric' })
+/** "November" */
+export const monthName = f({ month: 'long' })
+/** "Nov" */
+export const monthShort = f({ month: 'short' })
+/** "Thu" */
+export const weekdayShort = f({ weekday: 'short' })
+/** "Thursday, November 12" */
+export const fullDay = f({ weekday: 'long', month: 'long', day: 'numeric' })

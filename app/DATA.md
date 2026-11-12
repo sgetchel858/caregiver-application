@@ -5,13 +5,13 @@ The app talks to two backends through typed interfaces. Screens never know which
 | Service | Interface | Mock (default) | Real |
 |---|---|---|---|
 | Health API: medical information + agent | `src/services/HealthApi.ts` | `src/services/mock/MockHealthApi.ts` (fixtures in `mock/fixtures/health.ts`, scripted answers in `mock/scriptedAnswers.ts`) | `src/services/live/LiveHealthApi.ts` (fetch client, ready) |
-| App store: app data only | `src/services/AppStore.ts` | `src/services/mock/MockAppStore.ts` (localStorage, seeded from `mock/fixtures/app.ts`) | `src/services/live/SupabaseAppStore.ts` (stub) |
+| App store: app data only | `src/services/AppStore.ts` | `src/services/mock/MockAppStore.ts` (localStorage, seeded from `mock/fixtures/app.ts`) | `src/services/live/SupabaseAppStore.ts` (schema in `supabase/migrations/`) |
 
 Switch with env vars at build time (`.env.local` locally, workflow `env:` in CI):
 
 ```
 VITE_HEALTH_API=mock | live        # live also needs VITE_HEALTH_API_URL
-VITE_APP_STORE=mock | supabase     # supabase also needs VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+VITE_APP_STORE=mock | supabase     # supabase also needs VITE_AUTH=auth0, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (both set in .env)
 ```
 
 All types referenced below live in `src/services/types.ts`; that file is the source of truth for field-level detail.
@@ -256,132 +256,87 @@ Request: the `MessageDraft`, as edited by Sarah. **The app only calls this after
 { "id": "msg-1", "sentAt": "2026-11-14T15:12:00.000Z", "status": "sent" }
 ```
 
+### Calendar
+
+The calendar's dated events come from the app store (Part 2). These two calls add what only the agent knows.
+
+#### `GET /family/calendar-summary?members={id},{id}&from={YYYY-MM-DD}&to={YYYY-MM-DD}` → `CalendarSummary`
+The agent's one-line read on the family's health events in the range (the calendar asks for the current week), plus short labels for visits in it.
+```json
+{ "text": "One visit this week: Mom's neurology appointment tomorrow. Her prep sheet is ready.",
+  "visitLabels": [{ "visitId": "v-okafor", "label": "Prep sheet ready" }] }
+```
+
+#### `GET /members/{memberId}/visits/{visitId}/readiness` → `VisitReadiness`
+What is ready for an upcoming visit ("Ready for this visit") and what the agent will do afterwards. `kind` is `prep-sheet` (opens the prep sheet; `suggestedPins` are passed to it) or `record` (opens `recordId`).
+```json
+{ "memberId": "margaret", "visitId": "v-okafor",
+  "items": [
+    { "id": "ready-prep", "kind": "prep-sheet", "title": "Prep sheet",
+      "detail": "Latest BP, 4 medications, 3 questions",
+      "suggestedPins": [{ "kind": "vital", "id": "bp-2026-10-28" }] },
+    { "id": "ready-referral", "kind": "record", "title": "Referral from Dr. Yojansen",
+      "detail": "Oct 28 · in Mom's MyChart", "recordId": "rec-referral-neuro" }
+  ],
+  "afterVisitNote": "After the visit, I'll let you know when Dr. Okafor's notes arrive in Mom's MyChart and explain them in plain words." }
+```
+
 ---
 
-## Part 2 · App store: suggested Supabase layout
+## Part 2 · App store: Supabase
 
 App data only. No medical records and no agent logic.
 
-> **One decision to make before going live:** prep sheets, message drafts and family updates contain health details (BP readings, medication names, message text). Either:
-> 1. Store only **references** in Supabase (visit id, pins, checked questions, draft id) and rebuild the content from the Health API when opened. This is recommended and keeps PHI in one place. Or:
-> 2. Store snapshots, as the mock does today. Then the Supabase project must be on a HIPAA-eligible plan with a BAA, and the tables below hold PHI.
->
-> The tables below support either option: `sheet` and `body` are nullable for option 1.
+The schema, row-level security and the demo seed live in [`supabase/migrations/`](supabase/migrations/); that SQL is the source of truth. Change the database by adding a migration there and running `supabase db push`, then refresh the TypeScript types with `supabase gen types typescript --linked > src/services/live/database.types.ts`.
 
-```sql
--- One row per signed-in user (id = auth.users.id)
-create table app_users (
-  id            uuid primary key references auth.users(id) on delete cascade,
-  first_name    text not null,
-  last_name     text not null,
-  initials      text not null,
-  avatar_color  text not null default '#A5D7C7',
-  created_at    timestamptz not null default now()
-);
+> **Demo data only.** `prep_sheets.sheet`, `message_drafts.body`, `family_updates.summary` and the text columns of `appointments` hold health details (BP readings, medication names, message text). That is fine for the fictional Mitchell family. Before real people's data goes in, move to a HIPAA-eligible store with a BAA, or store only references (visit id, pins, draft id) and rebuild the content from the Health API. `sheet` and `body` are nullable for that reason.
 
-create table families (
-  id          uuid primary key default gen_random_uuid(),
-  name        text not null,                   -- "The Mitchells"
-  created_by  uuid not null references app_users(id),
-  created_at  timestamptz not null default now()
-);
+| Table | Holds |
+|---|---|
+| `app_users` | One row per signed-in user. `id` is the Auth0 `sub` (text). |
+| `families` | "The Mitchells". |
+| `family_members` | Everyone in the family, whether or not they use the app. `health_member_id` is the Health API `memberId`. A user has their own row (`app_user_id` set). |
+| `family_access` | Who can see a family: `owner`, `editor` or `viewer`. |
+| `care_circles` | Who gets updates about whom ("Also update Dad and Mike"). |
+| `user_settings` | Large text, share updates by default. |
+| `prep_sheets` | One per member and visit: the pins and the sheet snapshot. |
+| `question_lists` | One per member and visit: `[{id, text, checked, addedBy}]`. |
+| `message_drafts` | Drafts to the care team. `draft_key` is the draft id the Health API gave. |
+| `family_updates` | Updates sent to the family about a member. |
+| `appointments` | Family calendar: dated health events (visits, refills). |
+| `to_book_items` | Things that still need booking ("Flu shot · due this month"). |
 
--- Everyone in the family, whether or not they use the app
-create table family_members (
-  id                uuid primary key default gen_random_uuid(),
-  family_id         uuid not null references families(id) on delete cascade,
-  app_user_id       uuid references app_users(id),   -- null for Mom, the kids, …
-  health_member_id  text,                            -- Health API memberId, null if not connected
-  first_name        text not null,
-  relation          text not null,                   -- how the owner refers to them: "Mom"
-  user_is           text not null,                   -- how they refer to the owner: "daughter"
-  birth_year        int,
-  initials          text not null,
-  avatar_color      text not null,
-  sort_order        int not null default 0
-);
+**Sign-in.** Supabase trusts the Auth0 sign-in (third-party auth). Every request carries the user's Auth0 ID token, and row-level security reads its `sub` claim through `private.uid()`. Setup: [README.md](README.md#supabase-app-store).
 
--- Who can see the family (owner, spouse, siblings…)
-create table family_access (
-  family_id    uuid references families(id) on delete cascade,
-  app_user_id  uuid references app_users(id) on delete cascade,
-  role         text not null check (role in ('owner','editor','viewer')),
-  primary key (family_id, app_user_id)
-);
+**Row-level security.** It is on for every table. A user can read rows only for families they appear in through `family_access`, and writes need `owner` or `editor`. The publishable key is public by design and on its own reads nothing, so RLS is the real protection.
 
--- Who gets updates about whom ("Also update Dad and Mike")
-create table care_circles (
-  about_member_id   uuid references family_members(id) on delete cascade,
-  notify_member_id  uuid references family_members(id) on delete cascade,
-  primary key (about_member_id, notify_member_id)
-);
+**Demo seed.** `bootstrap_demo_family()` runs when a user first opens the app and gives them their own copy of the Mitchell family, with the user as Sarah. It mirrors `mock/fixtures/app.ts` and does nothing on later calls. Remove it before real users sign up.
 
-create table user_settings (
-  app_user_id               uuid primary key references app_users(id) on delete cascade,
-  large_text                boolean not null default false,
-  share_updates_by_default  boolean not null default true
-);
-
-create table prep_sheets (
-  id                uuid primary key default gen_random_uuid(),
-  family_member_id  uuid not null references family_members(id) on delete cascade,
-  visit_id          text not null,                 -- Health API visit id
-  pins              jsonb not null default '[]',   -- [{kind:"vital", id, pinnedAt}]
-  sheet             jsonb,                         -- PrepSheet snapshot (option 2 only)
-  saved_by          uuid not null references app_users(id),
-  saved_at          timestamptz not null default now(),
-  unique (family_member_id, visit_id)
-);
-
-create table question_lists (
-  family_member_id  uuid references family_members(id) on delete cascade,
-  visit_id          text,
-  items             jsonb not null,               -- [{id, text, checked, addedBy}]
-  updated_at        timestamptz not null default now(),
-  primary key (family_member_id, visit_id)
-);
-
-create table message_drafts (
-  id                uuid primary key default gen_random_uuid(),
-  family_member_id  uuid not null references family_members(id) on delete cascade,
-  to_clinician_id   text not null,
-  to_name           text not null,
-  to_role           text not null,
-  channel           text not null default 'MyChart',
-  body              text,                          -- option 2 only
-  about_kind        text,                          -- 'interaction-check'
-  about_id          text,
-  sent_message_id   text,                          -- set after POST /messages succeeds
-  created_by        uuid not null references app_users(id),
-  created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now()
-);
-
-create table family_updates (
-  id               uuid primary key default gen_random_uuid(),
-  family_id        uuid not null references families(id) on delete cascade,
-  from_user_id     uuid not null references app_users(id),
-  about_member_id  uuid not null references family_members(id),
-  to_member_ids    uuid[] not null,
-  summary          text not null,
-  ref_kind         text not null check (ref_kind in ('prep-sheet','message','interaction-check')),
-  ref_id           text not null,
-  created_at       timestamptz not null default now()
-);
-```
-
-**Row-level security.** Turn it on for every table. A user can read and write rows only for families they appear in through `family_access`, with writes needing `owner` or `editor`. The anon key is public by design, so RLS is the real protection.
+**Ids.** Rows have uuid ids. Screens pass the Health API member id (the `/m/:memberId` route) to the prep sheet, question list and draft methods, so `SupabaseAppStore` accepts either a `family_members.id` or a `health_member_id` wherever a method takes a member id.
 
 **Mapping to `AppStore` methods**
 
 | Method | Table(s) |
 |---|---|
-| `getCurrentUser()` | `app_users` (current `auth.uid()`) |
+| `getCurrentUser()` | `app_users` (the row whose id is the token's `sub`) |
 | `getFamily()` | `families` + `family_members` + `care_circles` via `family_access` |
 | `getSettings()` / `updateSettings()` | `user_settings` |
 | `getPrepSheet()` / `savePrepSheet()` | `prep_sheets` |
 | `getQuestionList()` / `saveQuestionList()` | `question_lists` |
 | `listDrafts()` / `saveDraft()` | `message_drafts` |
 | `createFamilyUpdate()` | `family_updates` (push notifications should say only "New update about Mom", never health details) |
+| `listAppointments(familyId, { from, to })` | `appointments` where `starts_on` is between `from` and `to` (both inclusive), ordered by `starts_at`, then `starts_on` |
+| `getAppointment(id)` | `appointments` by id; `null` when it doesn't exist |
+| `listToBookItems(familyId)` | `to_book_items` where `booked_appointment_id is null`, ordered by `due_by` |
+| `setAppointmentEscort(id, escortId)` | update `appointments.escort_member_id` (and `updated_at`); returns the updated row |
 
 **Not stored anywhere yet.** Ask conversations are kept in the browser session only (`sessionStorage`). Add an `ask_threads` table if you want them to persist; it would hold PHI.
+
+**Calendar notes**
+
+- `Appointment.escortId` is the signed-in user's id or a family member's id. In Supabase the user has their own `family_members` row (`app_user_id` set), so `escort_member_id` covers both. Map it back to the user's id when it is their row.
+- `Appointment.escortOptions` is not a column: for a visit it is the signed-in user plus the member's `care_circles` rows, and for a refill it is empty.
+- Appointment titles, places and notes are health details ("Neurology with Dr. Okafor"), so the decision at the top of this part applies to these two tables as well. To keep PHI out of Supabase, store only `health_visit_id` and read the title and place from the Health API.
+- The agent's week summary, the "Prep sheet ready" label and "Ready for this visit" come from the Health API (Part 1, Calendar), never from these tables.
+- "Today" for the calendar comes from the shared `Clock` service: the demo scene's date in mock mode, the real date when the Health API is live.
+

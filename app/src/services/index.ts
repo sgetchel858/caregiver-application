@@ -3,7 +3,7 @@
  * Screens get them through useServices() and never know which is which.
  *
  *   VITE_HEALTH_API = mock | live        (live needs VITE_HEALTH_API_URL)
- *   VITE_APP_STORE  = mock | supabase
+ *   VITE_APP_STORE  = mock | supabase    (supabase needs VITE_AUTH=auth0, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)
  *   VITE_AUTH       = none | auth0       (auth0 needs VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID)
  *   VITE_SIL_API_URL, VITE_SIL_TENANT    the Cognatum API and workspace the signed-in user calls
  */
@@ -46,6 +46,16 @@ function createAuth(env: ImportMetaEnv): Auth {
   })
 }
 
+function createStore(env: ImportMetaEnv, auth: Auth): AppStore {
+  if (env.VITE_APP_STORE !== 'supabase') return new MockAppStore()
+  if (!env.VITE_SUPABASE_URL || !env.VITE_SUPABASE_ANON_KEY) {
+    throw new Error('VITE_APP_STORE=supabase needs VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY')
+  }
+  // Supabase identifies the user by their Auth0 token; without sign-in every table reads as empty.
+  if (!auth.enabled) throw new Error('VITE_APP_STORE=supabase needs VITE_AUTH=auth0')
+  return new SupabaseAppStore(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY, auth)
+}
+
 export function createServices(env: ImportMetaEnv = import.meta.env): Services {
   const healthMode = env.VITE_HEALTH_API === 'live' ? 'live' : 'mock'
   const storeMode = env.VITE_APP_STORE === 'supabase' ? 'supabase' : 'mock'
@@ -57,7 +67,7 @@ export function createServices(env: ImportMetaEnv = import.meta.env): Services {
     healthMode === 'live'
       ? new LiveHealthApi(env.VITE_HEALTH_API_URL, auth.enabled ? () => sil.authHeaders() : undefined)
       : new MockHealthApi()
-  const store: AppStore = storeMode === 'supabase' ? new SupabaseAppStore() : new MockAppStore()
+  const store = createStore(env, auth)
 
   return {
     health,
