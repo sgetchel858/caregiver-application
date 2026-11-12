@@ -27,7 +27,7 @@ All types referenced below live in `src/services/types.ts`; that file is the sou
 - **Dates:** `ISODate` = `"2026-10-28"`. `LocalDateTime` = `"2026-11-12T10:30:00"`, **no offset**, in the member's own time zone (wall-clock time as recorded). The app shows these as written, wherever the phone is.
 - **Rich text:** fields marked *rich* may contain `**bold**` and blank-line paragraph breaks, nothing else.
 - **Errors:** `404` → "not found" UI. Any other non-2xx, network failure or a 20 s timeout → error state with Retry. A JSON error body is optional and is not shown to users.
-- **Auth:** not wired. Add a short-lived bearer token in `LiveHealthApi.request()` when you have one. Never put a static secret in a `VITE_*` variable: the bundle is public.
+- **Auth:** with `VITE_AUTH=auth0`, every request carries the signed-in user's Auth0 access token (`Authorization: Bearer …`, audience `https://sil-api`) and `X-SIL-Tenant: <tenant id>`, supplied by `SilClient.authHeaders()`. A `401` reads as "session ended", a `403` as "no access". Setup: [README.md](README.md#sign-in-with-the-cognatum-account-auth0). Never put a static secret in a `VITE_*` variable: the bundle is public.
 - **Member ids:** `memberId` is the Health API's id for a person. The app store maps family members to it via `family_members.health_member_id`.
 - **Sources:** every answer must cite at least one `SourceRef`, and every `recordId` must resolve via `GET /members/{id}/records/{recordId}`. The UI relies on this to keep the "every answer shows its source" guardrail.
 

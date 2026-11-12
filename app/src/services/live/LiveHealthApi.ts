@@ -27,28 +27,39 @@ import { ServiceError } from '../errors'
  * REST client for the Health API. The contract is in app/DATA.md.
  * The base URL comes from VITE_HEALTH_API_URL; no other URL lives in the app.
  *
- * Auth is not wired yet. When it is, add the header in `request()` (e.g. a
- * short-lived bearer token from your auth provider). Never ship a static
- * secret: everything in the bundle is public.
+ * Auth: `authHeaders` (when given) is called before every request; with
+ * VITE_AUTH=auth0 it supplies the signed-in user's Auth0 bearer token and the
+ * X-SIL-Tenant header (see SilClient). Never ship a static secret: everything
+ * in the bundle is public.
  */
 const TIMEOUT_MS = 20_000
+
+export type AuthHeaders = () => Promise<Record<string, string>>
 
 export class LiveHealthApi implements HealthApi {
   private baseUrl: string | null
 
-  constructor(baseUrl: string | undefined) {
+  constructor(
+    baseUrl: string | undefined,
+    private authHeaders?: AuthHeaders,
+  ) {
     this.baseUrl = baseUrl ? baseUrl.replace(/\/+$/, '') : null
   }
 
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
     if (!this.baseUrl) throw new ServiceError('not-configured', 'VITE_HEALTH_API_URL is not set')
+    const auth = this.authHeaders ? await this.authHeaders() : {}
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
     let res: Response
     try {
       res = await fetch(this.baseUrl + path, {
         method,
-        headers: { Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+        headers: {
+          Accept: 'application/json',
+          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          ...auth,
+        },
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: ctrl.signal,
       })
@@ -58,6 +69,8 @@ export class LiveHealthApi implements HealthApi {
       clearTimeout(timer)
     }
     if (res.status === 204) return null as T
+    if (res.status === 401) throw new ServiceError('unauthorized', `${method} ${path}: 401`)
+    if (res.status === 403) throw new ServiceError('forbidden', `${method} ${path}: 403`)
     if (res.status === 404) throw new ServiceError('not-found', `${method} ${path}: 404`)
     if (!res.ok) throw new ServiceError('server', `${method} ${path}: ${res.status}`)
     return (await res.json()) as T

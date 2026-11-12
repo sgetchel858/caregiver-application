@@ -5,6 +5,7 @@ import { ServicesProvider } from './lib/services'
 import { UIProvider } from './lib/ui'
 import { ThreadsProvider, clearThreads } from './state/threads'
 import { DemoMenu } from './components/DemoMenu'
+import { AuthGate } from './components/AuthGate'
 import { demoState, SCENES, type SceneId } from './services/demo/demoState'
 import { resetMockAppStore } from './services/mock/MockAppStore'
 import { FamilyHome } from './screens/FamilyHome'
@@ -52,6 +53,7 @@ function Shell() {
   return (
     <div className={`stage ${framed ? 'stage--framed' : ''}`}>
       <div className="device" ref={setDeviceEl}>
+        <AuthGate>
         <UIProvider deviceEl={deviceEl} openDemoMenu={() => setMenuOpen(true)}>
           <ThreadsProvider key={epoch}>
             <Routes key={epoch}>
@@ -76,6 +78,7 @@ function Shell() {
             />
           )}
         </UIProvider>
+        </AuthGate>
       </div>
     </div>
   )

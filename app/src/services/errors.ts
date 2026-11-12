@@ -1,4 +1,11 @@
-export type ServiceErrorCode = 'network' | 'timeout' | 'not-found' | 'server' | 'not-configured'
+export type ServiceErrorCode =
+  | 'network'
+  | 'timeout'
+  | 'not-found'
+  | 'server'
+  | 'not-configured'
+  | 'unauthorized'
+  | 'forbidden'
 
 export class ServiceError extends Error {
   readonly code: ServiceErrorCode
@@ -22,6 +29,10 @@ export function userMessage(err: unknown): string {
         return "We couldn't find that. It may have been removed."
       case 'not-configured':
         return 'This service isn’t set up yet.'
+      case 'unauthorized':
+        return 'Your session ended. Sign in again.'
+      case 'forbidden':
+        return 'Your account doesn’t have access to this.'
       default:
         return 'Something went wrong on our side. Try again in a moment.'
     }
