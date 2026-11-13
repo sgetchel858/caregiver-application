@@ -6,7 +6,6 @@ import type {
   Allergy,
   BpReading,
   Clinician,
-  DrugMatch,
   MemberProfile,
   Medication,
   NewMedication,
@@ -258,46 +257,7 @@ export const askSuggestions: Record<SceneId, { prompts: string[]; prefill?: stri
   m3: { prompts: ['What meds is Mom on?'] },
 }
 
-/** a tiny stand-in for a licensed drug database */
-export const drugs: (DrugMatch & { aliases: string[]; isPenicillin: boolean })[] = [
-  { id: 'ciprofloxacin', name: 'Ciprofloxacin', strength: '500 mg', drugClass: 'An antibiotic', aliases: ['cipro', 'ciprofloxacin'], isPenicillin: false },
-  { id: 'amoxicillin', name: 'Amoxicillin', strength: '500 mg', drugClass: 'A penicillin antibiotic', aliases: ['amoxicillin', 'amoxil'], isPenicillin: true },
-  { id: 'acetaminophen', name: 'Acetaminophen', strength: '500 mg', drugClass: 'A pain reliever', aliases: ['acetaminophen', 'tylenol', 'paracetamol'], isPenicillin: false },
-  { id: 'nitrofurantoin', name: 'Nitrofurantoin', strength: '100 mg', drugClass: 'An antibiotic', aliases: ['nitrofurantoin', 'macrobid'], isPenicillin: false },
-]
-
-/** interaction table: drugId + medication id */
-export const interactionTable: {
-  drugId: string
-  medicationId: string
-  severity: 'major'
-  title: string
-  summary: string
-  sections: { title: string; text: string }[]
-  recordId: string
-}[] = [
-  {
-    drugId: 'ciprofloxacin',
-    medicationId: 'med-warfarin',
-    severity: 'major',
-    title: 'Ciprofloxacin + Warfarin',
-    summary: 'Ciprofloxacin can make warfarin stronger. That raises her chance of bleeding.',
-    sections: [
-      {
-        title: 'Why it matters for Mom',
-        text: 'She takes **warfarin 5 mg** every evening, prescribed by Dr. Reyes (cardiology). Her last dose was Fri, Nov 13 at 8:04 PM.',
-      },
-      {
-        title: 'What care teams often do',
-        text: 'Check her INR (a blood test for clotting) sooner and more often, adjust the warfarin dose, or choose a different antibiotic.',
-      },
-      { title: 'Tell a nurse if you notice', text: 'Unusual bruising, bleeding gums, or blood in her urine or stool.' },
-    ],
-    recordId: 'rec-interaction-cipro-warfarin',
-  },
-]
-
-/** designed wording for the care-team follow-up in Moment 3 */
+/** designed wording for the care-team follow-up in Moment 3, keyed by "<ingredient>:<medication id>" (other findings get a drafted one) */
 export const followUpContent: Record<string, { inPerson: string[]; body: string; familySummary: string; toClinicianId: string }> = {
   'ciprofloxacin:med-warfarin': {
     toClinicianId: 'dr-reyes',

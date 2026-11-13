@@ -13,8 +13,6 @@ import type {
   Encounter,
   FamilyBriefing,
   InteractionCheck,
-  InteractionCheckItem,
-  InteractionFinding,
   MemberProfile,
   Medication,
   MessageDraft,
@@ -33,6 +31,8 @@ import { demoState, SCENES } from '../demo/demoState'
 import { simulate } from './latency'
 import { answerQuestion } from './scriptedAnswers'
 import * as fx from './fixtures/health'
+import { currentUser } from './fixtures/app'
+import * as drugCheck from '../drugs/interactionCheck'
 import { monthDay, parseLocal, time, weekdayMonthDay, monthYear } from '../../lib/format'
 
 /** the mock clock follows the demo scene */
@@ -46,43 +46,6 @@ function need<T>(value: T | undefined | null, what: string): T {
 }
 
 const clinicianLabel = (c: Clinician) => (c.role === 'GP' ? c.name : `${c.name}, ${c.role.toLowerCase()}`)
-
-/* ---------------- interaction checks (kept in session storage) ---------------- */
-
-interface StoredCheck {
-  check: InteractionCheck
-  drugId: string | null
-  startedAt: number
-  /** ms after start when each item resolves */
-  resolveAt: Record<string, number>
-  /** final results */
-  final: Record<string, Pick<InteractionCheckItem, 'result' | 'resultLabel'>>
-  findings: InteractionFinding[]
-}
-
-const CHECKS_KEY = 'casante-demo:checks'
-
-function loadChecks(): Record<string, StoredCheck> {
-  try {
-    return JSON.parse(sessionStorage.getItem(CHECKS_KEY) ?? '{}')
-  } catch {
-    return {}
-  }
-}
-function saveChecks(all: Record<string, StoredCheck>) {
-  try {
-    sessionStorage.setItem(CHECKS_KEY, JSON.stringify(all))
-  } catch {
-    /* ignore */
-  }
-}
-
-function findDrug(query: string) {
-  const q = query.trim().toLowerCase()
-  if (!q) return undefined
-  const first = q.split(/\s+/)[0]
-  return fx.drugs.find((d) => d.aliases.some((a) => a.startsWith(first) || first.startsWith(a)))
-}
 
 export class MockHealthApi implements HealthApi {
   constructor(protected clock: Clock = mockClock) {}
@@ -150,6 +113,7 @@ export class MockHealthApi implements HealthApi {
   getRecord(memberId: string, recordId: string): Promise<RecordDetail> {
     return simulate(() => {
       this.profileOf(memberId)
+      if (drugCheck.isCheckSource(recordId)) return drugCheck.checkSourceRecord(recordId)
       return need(fx.records[recordId], 'Record')
     })
   }
@@ -177,112 +141,29 @@ export class MockHealthApi implements HealthApi {
     }, 'agent')
   }
 
+  /* Drug lookup and interaction checks are real: RxNorm + openFDA labels (../drugs). */
+
   lookupDrug(query: string): Promise<DrugMatch | null> {
-    return simulate(() => {
-      const d = findDrug(query)
-      return d ? { id: d.id, name: d.name, strength: d.strength, drugClass: d.drugClass } : null
-    })
+    return drugCheck.lookupDrug(query)
   }
 
-  startInteractionCheck(memberId: string, med: NewMedication): Promise<InteractionCheck> {
-    return simulate(() => {
-      const meds = need(fx.medications[memberId], 'Medications')
-      const profile = this.profileOf(memberId)
-      const team = this.teamOf(memberId)
-      const drug = findDrug(med.name)
-      const id = `chk-${Date.now().toString(36)}`
-
-      const items: InteractionCheckItem[] = [
-        ...meds.map((m) => ({
-          id: m.id,
-          kind: 'medication' as const,
-          label: `${m.name} ${m.strength}`,
-          sublabel: clinicianLabel(team.find((c) => c.id === m.prescriberId)!),
-          result: 'pending' as const,
-        })),
-        ...profile.allergies.map((a) => ({
-          id: `allergy-${a.substance.toLowerCase()}`,
-          kind: 'allergy' as const,
-          label: `${a.substance} allergy`,
-          sublabel: 'From her chart',
-          result: 'pending' as const,
-        })),
-      ]
-
-      const final: StoredCheck['final'] = {}
-      const findings: InteractionFinding[] = []
-      for (const item of items) {
-        if (item.kind === 'medication') {
-          const hit = drug && fx.interactionTable.find((r) => r.drugId === drug.id && r.medicationId === item.id)
-          if (hit) {
-            final[item.id] = { result: hit.severity, resultLabel: 'Major interaction' }
-            findings.push({ id: `f-${item.id}`, severity: hit.severity, itemId: item.id, title: hit.title, summary: hit.summary, sections: hit.sections })
-          } else {
-            final[item.id] = { result: 'clear', resultLabel: 'No major interaction' }
-          }
-        } else {
-          const substance = item.label.replace(' allergy', '').toLowerCase()
-          if (drug?.isPenicillin && substance === 'penicillin') {
-            final[item.id] = { result: 'major', resultLabel: 'Allergy match' }
-            findings.push({
-              id: `f-${item.id}`,
-              severity: 'major',
-              itemId: item.id,
-              title: `${drug.name} + penicillin allergy`,
-              summary: `${drug.name} is a penicillin. Her chart lists a penicillin allergy (hives).`,
-              sections: [{ title: 'What care teams often do', text: 'Choose an antibiotic from a different family.' }],
-            })
-          } else {
-            final[item.id] = { result: 'clear', resultLabel: `Not a ${substance}` }
-          }
-        }
-      }
-
-      // Clear items resolve in order; anything flagged resolves last and slowest.
-      const slow = demoState.get().slowNetwork ? 2 : 1
-      const resolveAt: Record<string, number> = {}
-      let t = 0
-      for (const item of items.filter((i) => final[i.id].result === 'clear')) resolveAt[item.id] = (t += 850 * slow)
-      for (const item of items.filter((i) => final[i.id].result !== 'clear')) resolveAt[item.id] = (t += 1700 * slow)
-
-      const doctors = new Set(meds.map((m) => m.prescriberId)).size
-      const check: InteractionCheck = {
-        id,
+  async startInteractionCheck(memberId: string, med: NewMedication): Promise<InteractionCheck> {
+    const profile = this.profileOf(memberId)
+    return drugCheck.startCheck(
+      {
         memberId,
-        status: 'running',
-        drug: {
-          name: drug?.name ?? med.name.split(/\s+/)[0],
-          label: med.name,
-          drugClass: drug?.drugClass ?? 'Medication',
-        },
-        scopeLine: `Against Mom's ${meds.length} medications from ${doctors} doctors, and her allergies`,
-        items,
-        findings: [],
-        source: { recordId: 'rec-interaction-cipro-warfarin', label: 'drug-interaction database' },
-        disclaimer: "This doesn't replace her care team. Don't stop or change any medicine without asking them.",
-      }
-      const all = loadChecks()
-      all[id] = { check, drugId: drug?.id ?? null, startedAt: Date.now(), resolveAt, final, findings }
-      saveChecks(all)
-      return check
-    }, 'write')
+        callName: memberId === fx.MARGARET ? 'Mom' : profile.firstName,
+        medications: need(fx.medications[memberId], 'Medications'),
+        allergies: profile.allergies,
+        careTeam: this.teamOf(memberId),
+        primaryClinicianId: profile.primaryClinicianId,
+      },
+      med,
+    )
   }
 
   getInteractionCheck(checkId: string): Promise<InteractionCheck> {
-    return simulate(() => {
-      const stored = need(loadChecks()[checkId], 'Interaction check')
-      const elapsed = Date.now() - stored.startedAt
-      const items = stored.check.items.map((item) =>
-        elapsed >= stored.resolveAt[item.id] ? { ...item, ...stored.final[item.id] } : item,
-      )
-      const done = items.every((i) => i.result !== 'pending')
-      return {
-        ...stored.check,
-        items,
-        status: done ? 'complete' : 'running',
-        findings: stored.findings.filter((f) => items.find((i) => i.id === f.itemId)?.result !== 'pending'),
-      }
-    }, 'read')
+    return drugCheck.getCheck(checkId)
   }
 
   buildPrepSheet(memberId: string, visitId: string, opts?: { pins?: PrepPin[] }): Promise<PrepSheet> {
@@ -404,12 +285,13 @@ export class MockHealthApi implements HealthApi {
   }
 
   draftInteractionFollowUp(memberId: string, checkId: string): Promise<CareTeamFollowUp> {
-    return simulate(() => {
-      const stored = need(loadChecks()[checkId], 'Interaction check')
-      const finding = need(stored.findings[0], 'Interaction finding')
-      const content = need(fx.followUpContent[`${stored.drugId}:${finding.itemId}`], 'Follow-up')
-      const to = this.teamOf(memberId).find((c) => c.id === content.toClinicianId)!
+    return simulate(async () => {
+      const check = await drugCheck.getCheck(checkId)
+      const finding = need(check.findings[0], 'Interaction finding')
       const enc = this.encounterNow(memberId)
+      const content = fx.followUpContent[`${check.drug.name.toLowerCase()}:${finding.itemId}`]
+      if (!content) return drugCheck.draftFollowUp(checkId, { atFacility: enc?.facility ?? null, userFirstName: currentUser.firstName })
+      const to = this.teamOf(memberId).find((c) => c.id === content.toClinicianId)!
       const now = new Date().toISOString()
       const draft: MessageDraft = {
         id: `draft-${checkId}`,

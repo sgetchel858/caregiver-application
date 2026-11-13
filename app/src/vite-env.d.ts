@@ -13,6 +13,7 @@ interface ImportMetaEnv {
   readonly VITE_AUTH0_CACHE?: 'localstorage' | 'memory'
   readonly VITE_SIL_API_URL?: string
   readonly VITE_SIL_TENANT?: string
+  readonly VITE_OPENFDA_API_KEY?: string
 }
 
 interface ImportMeta {

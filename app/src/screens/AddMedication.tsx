@@ -114,7 +114,11 @@ export function AddMedication() {
                     </label>
                     <input id="med-name" className={`input ${match ? 'input--active' : ''}`} value={values.name} onChange={set('name')} autoComplete="off" aria-describedby="med-match" />
                     <span id="med-match" className="small muted" aria-live="polite">
-                      {match ? `${match.drugClass} · matched from the drug list` : match === null ? 'Not found in the drug list. Check the spelling.' : ' '}
+                      {match
+                        ? `${match.name}${match.drugClass ? ` · ${match.drugClass}` : ''} · matched in RxNorm`
+                        : match === null
+                          ? 'Not found in RxNorm. Check the spelling.'
+                          : ' '}
                     </span>
                   </div>
                   <div className="field">

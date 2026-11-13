@@ -48,7 +48,9 @@ export function SourceSheet({ memberId, source, onClose }: { memberId: string; s
             </p>
             <p className="small muted" style={{ margin: 0 }}>
               {r.kind === 'interaction-db'
-                ? 'From a licensed drug-interaction database, not the AI’s judgment.'
+                ? r.facility.startsWith('openFDA')
+                  ? 'From the FDA-approved drug label, not the AI’s judgment.'
+                  : 'From a licensed drug-interaction database, not the AI’s judgment.'
                 : r.kind === 'hub-log'
                   ? 'From the kitchen hub’s dose log.'
                   : 'From her medical records in MyChart.'}

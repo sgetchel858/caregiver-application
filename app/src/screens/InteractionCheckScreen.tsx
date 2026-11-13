@@ -167,7 +167,7 @@ export function InteractionCheckScreen() {
               </ul>
 
               <p className="small muted" style={{ margin: 0, textAlign: 'center' }}>
-                Checked with a {check.source.label}, not guessed.
+                Checked against {check.source.label}, not guessed.
               </p>
               {!!error && <ErrorState error={error} onRetry={retry} title="Lost connection during the check" />}
 
