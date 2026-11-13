@@ -39,7 +39,16 @@ export const SCENES: Scene[] = [
   },
 ]
 
+/**
+ * Where Ask answers come from (needs Cognatum sign-in; otherwise always scripted):
+ * - scripted: the designed demo answers only
+ * - hybrid: designed answers for the demo questions, Cognatum for everything else
+ * - live: every question goes to Cognatum
+ */
+export type AskMode = 'scripted' | 'hybrid' | 'live'
+
 export interface DemoState {
+  askMode: AskMode
   scene: SceneId
   slowNetwork: boolean
   failNext: boolean
@@ -48,7 +57,7 @@ export interface DemoState {
 }
 
 const KEY = 'casante-demo:state'
-const DEFAULT: DemoState = { scene: 'm1', slowNetwork: false, failNext: false, epoch: 0 }
+const DEFAULT: DemoState = { askMode: 'hybrid', scene: 'm1', slowNetwork: false, failNext: false, epoch: 0 }
 
 function load(): DemoState {
   try {

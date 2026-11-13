@@ -20,6 +20,7 @@ npm run dev -- --host       # also on your Wi-Fi, to open on an iPhone or iPad
 - Jump to the start of Moment 1, 2 or 3. This resets the demo data and sets the demo clock: Wed Nov 11 for Moment 1, Sat Nov 14 at St. Luke's for Moments 2 and 3.
 - Slow network, or fail the next request, to show the loading and error states.
 - Reset demo data.
+- With Cognatum sign-in on: **Ask answers** (scripted / demo questions scripted, others from Cognatum / everything from Cognatum), **Seed Mitchell records**, **Run recall test**. See [Ask on Cognatum](#ask-on-cognatum).
 
 | Moment | Start | Path |
 |---|---|---|
@@ -28,6 +29,16 @@ npm run dev -- --host       # also on your Wi-Fi, to open on an iPhone or iPad
 | 3 · Interaction check | New medication | **Check against Mom's meds** → see results → **Ask the care team** → review and send |
 
 Typed questions work too. The demo questions match with small wording differences ("when did mom break her ankle", "last warfarin dose"). Anything else gets "I can only answer from Mom's records in this demo".
+
+## Ask on Cognatum
+
+With sign-in on (`VITE_AUTH=auth0`), Ask can answer from Mom's records in Cognatum instead of the script. Records, visits and the interaction check stay on the demo fixtures; only Ask changes (`src/services/live/CognatumAskHealthApi.ts`).
+
+- **Records in Cognatum:** one markdown file per record in `seed/cognatum/Margaret Mitchell/<subfolder>/`, named `… - <date> - <recordId>.md`. Demo menu → **Seed Mitchell records** uploads them to `Casanté · Mitchell family / Margaret Mitchell` in the `casante` workspace. It is safe to run again: unchanged files are skipped, changed files replace the old document.
+- **Ask answers switch** (demo menu): *Demo questions scripted, others from Cognatum* (default) keeps the three moments on the designed answers and sends everything else to Cognatum. *Everything from Cognatum* sends every question. *Scripted only* needs no network.
+- **How an answer is built:** the question goes to SIL folder chat for the member's folder ("Mom" becomes "Margaret"; documents dated after the demo clock are left out). Citations map back to record ids through the file names. BP questions add the BP card, warfarin dose questions add the dose log, advice questions add "ask her doctor", and an uncited reply is shown as out of scope.
+- **Run recall test** asks 23 caregiver questions and checks each cites the expected record.
+- **Local dev only for now:** the browser calls SIL through the Vite proxy. A hosted build needs the adapter behind a server, or the site's origin in Cognatum's `CORS_ORIGINS`.
 
 ## Build and deploy
 

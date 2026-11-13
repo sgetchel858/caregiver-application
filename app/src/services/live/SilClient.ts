@@ -65,6 +65,19 @@ export class SilClient {
     return this.send<T>(method, path, body, await this.authHeaders())
   }
 
+  /** A tenant-bound multipart upload (e.g. a document into a folder). */
+  async upload<T>(path: string, form: FormData): Promise<T> {
+    return this.send<T>('POST', path, form, await this.authHeaders())
+  }
+
+  /** The claims in the current access token (no verification: for the demo menu's diagnostics only). */
+  async tokenClaims(): Promise<Record<string, unknown>> {
+    const token = await this.token()
+    const part = token.split('.')[1] ?? ''
+    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '='))
+    return JSON.parse(decodeURIComponent(escape(json))) as Record<string, unknown>
+  }
+
   /** Who SIL thinks the caller is, inside the configured tenant. Use it as a connection check. */
   async connect(): Promise<SilConnection> {
     const tenant = await this.resolveTenant()
@@ -117,10 +130,11 @@ export class SilClient {
         method,
         headers: {
           Accept: 'application/json',
-          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          // FormData sets its own multipart Content-Type (with the boundary).
+          ...(body !== undefined && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
           ...headers,
         },
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
         signal: ctrl.signal,
       })
     } catch (e) {
@@ -132,10 +146,10 @@ export class SilClient {
     if (res.ok) return (await res.json()) as T
     const code = await errorCode(res)
     const detail = `${method} ${path}: ${res.status}${code ? ` ${code}` : ''}`
-    if (res.status === 401) throw new ServiceError('unauthorized', detail)
-    if (res.status === 403) throw new ServiceError('forbidden', detail)
-    if (res.status === 404) throw new ServiceError('not-found', detail)
-    throw new ServiceError('server', detail)
+    if (res.status === 401) throw new ServiceError('unauthorized', detail, res.status)
+    if (res.status === 403) throw new ServiceError('forbidden', detail, res.status)
+    if (res.status === 404) throw new ServiceError('not-found', detail, res.status)
+    throw new ServiceError('server', detail, res.status)
   }
 }
 

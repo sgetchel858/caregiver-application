@@ -86,6 +86,65 @@ function base(question: string, ctx: AskContext): Omit<AgentAnswer, 'blocks' | '
   }
 }
 
+/* ---------------- answer cards (shared with the live Cognatum answers) ---------------- */
+
+/** Mom's latest BP with its trend, plus "Add to … prep" and "All readings" */
+export function bpCard(now: Date): { block: AgentAnswer['blocks'][number]; latest: BpReading; actions: AnswerAction[] } {
+  const readings = readingsUpTo(now)
+  const latest = readings[readings.length - 1]
+  const by = clinician(latest.clinicianId)
+  const trend = readings.filter((r) => r.clinicianId === by.id).slice(-3)
+  const actions: AnswerAction[] = []
+  const upcoming = nextVisit(now)
+  if (upcoming) {
+    const rel = relativeDay(upcoming.startsAt, now)
+    actions.push({
+      kind: 'add-to-prep',
+      label: rel === 'Tomorrow' ? "Add to tomorrow's prep" : rel === 'Today' ? "Add to today's prep" : 'Add to visit prep',
+      visitId: upcoming.id,
+      pin: { kind: 'vital', id: latest.id },
+      style: 'primary',
+    })
+  }
+  actions.push({ kind: 'show-vitals', label: 'All readings', vitalType: 'bp', style: 'secondary' })
+  return {
+    block: { type: 'bp-reading', label: 'Blood pressure', reading: latest, trendLabel: `Last ${trend.length} visits with ${by.name}`, trend },
+    latest,
+    actions,
+  }
+}
+
+/** Mom's warfarin doses this week from the kitchen hub */
+export function doseLogCard(now: Date): AgentAnswer['blocks'][number] {
+  const med = medications[MARGARET].find((m) => m.id === 'med-warfarin')!
+  const log = hubDoseLog.filter((d) => d.takenAt && parseLocal(d.takenAt) <= now).slice(-7)
+  const last = log[log.length - 1]
+  const lastAt = last.takenAt!
+  const rel = relativeDay(lastAt, now)
+  const headline = rel === 'Yesterday' ? `Last night, ${time(lastAt)}` : rel === 'Today' ? `Today, ${time(lastAt)}` : `${weekdayMonthDay(lastAt)}, ${time(lastAt)}`
+  const taken = log.filter((d) => d.takenAt).length
+  const prescriber = clinician(med.prescriberId)
+  return {
+    type: 'dose-log',
+    headline,
+    detail: `${weekdayMonthDay(lastAt)} · logged on Mom's kitchen hub`,
+    weekLabel: 'Evening doses this week',
+    days: log.map((d, i) => ({
+      label: new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(parseLocal(d.date)),
+      taken: !!d.takenAt,
+      latest: i === log.length - 1,
+    })),
+    summary: taken === log.length ? `Taken all ${taken} evenings` : `Taken ${taken} of ${log.length} evenings`,
+    medication: {
+      title: `**${med.name}** ${med.strength} · once ${med.schedule}`,
+      lines: [
+        `Prescribed by ${prescriber.name}, ${prescriber.role.toLowerCase()}`,
+        `Last refill ${monthDay(med.lastRefill!.date)} · ${med.lastRefill!.pharmacy}`,
+      ],
+    },
+  }
+}
+
 /* ---------------- scripted answers ---------------- */
 
 function bpAnswer(question: string, ctx: AskContext, named: Clinician | undefined): AgentAnswer {
@@ -112,28 +171,9 @@ function bpAnswer(question: string, ctx: AskContext, named: Clinician | undefine
     })
   }
 
-  const trend = readings.filter((r) => r.clinicianId === by.id).slice(-3)
-  blocks.push({
-    type: 'bp-reading',
-    label: 'Blood pressure',
-    reading: latest,
-    trendLabel: `Last ${trend.length} visits with ${by.name}`,
-    trend,
-  })
-
-  const actions: AnswerAction[] = []
-  const upcoming = nextVisit(ctx.now)
-  if (upcoming) {
-    const rel = relativeDay(upcoming.startsAt, ctx.now)
-    actions.push({
-      kind: 'add-to-prep',
-      label: rel === 'Tomorrow' ? "Add to tomorrow's prep" : rel === 'Today' ? "Add to today's prep" : 'Add to visit prep',
-      visitId: upcoming.id,
-      pin: { kind: 'vital', id: latest.id },
-      style: 'primary',
-    })
-  }
-  actions.push({ kind: 'show-vitals', label: 'All readings', vitalType: 'bp', style: 'secondary' })
+  const card = bpCard(ctx.now)
+  blocks.push(card.block)
+  const actions = card.actions
 
   const sources = [{ recordId: latest.recordId, label: `Visit summary · ${monthDay(latest.takenAt)}` }]
   if (named) sources.push({ recordId: 'rec-care-team', label: 'Care team list' })
@@ -199,37 +239,13 @@ function xrayAnswer(question: string, ctx: AskContext): AgentAnswer {
 
 function warfarinAnswer(question: string, ctx: AskContext): AgentAnswer {
   const med = medications[MARGARET].find((m) => m.id === 'med-warfarin')!
-  const log = hubDoseLog.filter((d) => d.takenAt && parseLocal(d.takenAt) <= ctx.now).slice(-7)
-  const last = log[log.length - 1]
-  const lastAt = last.takenAt!
-  const rel = relativeDay(lastAt, ctx.now)
-  const headline = rel === 'Yesterday' ? `Last night, ${time(lastAt)}` : rel === 'Today' ? `Today, ${time(lastAt)}` : `${weekdayMonthDay(lastAt)}, ${time(lastAt)}`
-  const taken = log.filter((d) => d.takenAt).length
   const prescriber = clinician(med.prescriberId)
   const actions: AnswerAction[] = ctx.atFacility ? [{ kind: 'show-to-nurse', label: 'Show answers to the nurse', style: 'dock' }] : []
 
   return {
     ...base(question, ctx),
     blocks: [
-      {
-        type: 'dose-log',
-        headline,
-        detail: `${weekdayMonthDay(lastAt)} · logged on Mom's kitchen hub`,
-        weekLabel: 'Evening doses this week',
-        days: log.map((d, i) => ({
-          label: new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(parseLocal(d.date)),
-          taken: !!d.takenAt,
-          latest: i === log.length - 1,
-        })),
-        summary: taken === log.length ? `Taken all ${taken} evenings` : `Taken ${taken} of ${log.length} evenings`,
-        medication: {
-          title: `**${med.name}** ${med.strength} · once ${med.schedule}`,
-          lines: [
-            `Prescribed by ${prescriber.name}, ${prescriber.role.toLowerCase()}`,
-            `Last refill ${monthDay(med.lastRefill!.date)} · ${med.lastRefill!.pharmacy}`,
-          ],
-        },
-      },
+      doseLogCard(ctx.now),
       {
         type: 'note',
         text: 'Her prescription and refills come from MyChart. The time she took it comes from her kitchen hub log.',

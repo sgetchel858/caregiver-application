@@ -10,8 +10,11 @@ export type ServiceErrorCode =
 export class ServiceError extends Error {
   readonly code: ServiceErrorCode
   readonly retryable: boolean
-  constructor(code: ServiceErrorCode, message: string) {
+  /** the HTTP status, when the error came from a response */
+  readonly status?: number
+  constructor(code: ServiceErrorCode, message: string, status?: number) {
     super(message)
+    this.status = status
     this.name = 'ServiceError'
     this.code = code
     this.retryable = code === 'network' || code === 'timeout' || code === 'server'

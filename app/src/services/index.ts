@@ -15,6 +15,7 @@ import { MockAppStore } from './mock/MockAppStore'
 import { LiveHealthApi } from './live/LiveHealthApi'
 import { SupabaseAppStore } from './live/SupabaseAppStore'
 import { SilClient } from './live/SilClient'
+import { CognatumAskHealthApi } from './live/CognatumAskHealthApi'
 import { NoAuth, type Auth } from './auth/Auth'
 import { Auth0Auth } from './auth/Auth0Auth'
 
@@ -28,7 +29,8 @@ export interface Services {
   sil: SilClient
   /** true when either service is a mock (enables demo-only controls) */
   isDemo: boolean
-  modes: { health: 'mock' | 'live'; store: 'mock' | 'supabase'; auth: 'none' | 'auth0' }
+  /** ask: 'cognatum' when Ask can answer from Cognatum (demo menu switch); otherwise answers come from `health` */
+  modes: { health: 'mock' | 'live'; store: 'mock' | 'supabase'; auth: 'none' | 'auth0'; ask: 'health-api' | 'cognatum' }
 }
 
 function createAuth(env: ImportMetaEnv): Auth {
@@ -66,7 +68,10 @@ export function createServices(env: ImportMetaEnv = import.meta.env): Services {
   const health: HealthApi =
     healthMode === 'live'
       ? new LiveHealthApi(env.VITE_HEALTH_API_URL, auth.enabled ? () => sil.authHeaders() : undefined)
-      : new MockHealthApi()
+      : // Mock records; with Cognatum sign-in, Ask can also answer from the member's Cognatum folder.
+        auth.enabled && sil.configured
+        ? new CognatumAskHealthApi(sil)
+        : new MockHealthApi()
   const store = createStore(env, auth)
 
   return {
@@ -76,7 +81,12 @@ export function createServices(env: ImportMetaEnv = import.meta.env): Services {
     auth,
     sil,
     isDemo: healthMode === 'mock' || storeMode === 'mock',
-    modes: { health: healthMode, store: storeMode, auth: auth.enabled ? 'auth0' : 'none' },
+    modes: {
+      health: healthMode,
+      store: storeMode,
+      auth: auth.enabled ? 'auth0' : 'none',
+      ask: health instanceof CognatumAskHealthApi ? 'cognatum' : 'health-api',
+    },
   }
 }
 

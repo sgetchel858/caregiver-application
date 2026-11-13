@@ -85,9 +85,9 @@ function findDrug(query: string) {
 }
 
 export class MockHealthApi implements HealthApi {
-  constructor(private clock: Clock = mockClock) {}
+  constructor(protected clock: Clock = mockClock) {}
 
-  private scene() {
+  protected scene() {
     return demoState.get().scene
   }
 
@@ -99,7 +99,7 @@ export class MockHealthApi implements HealthApi {
     return need(fx.careTeam[memberId], 'Care team')
   }
 
-  private encounterNow(memberId: string): Encounter | null {
+  protected encounterNow(memberId: string): Encounter | null {
     if (memberId !== fx.MARGARET) return null
     const e = fx.encounters[this.scene()]
     return e ? { id: 'enc-stlukes-2026-11-14', kind: 'emergency', ...e } : null

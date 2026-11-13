@@ -112,6 +112,7 @@ export type RecordKind =
   | 'medication-list'
   | 'appointment'
   | 'interaction-db'
+  | 'profile'
 
 export interface SourceRef {
   recordId: string

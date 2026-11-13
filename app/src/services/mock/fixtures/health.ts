@@ -114,6 +114,15 @@ export const encounters: Record<SceneId, { facility: string; startedAt: string; 
 }
 
 export const records: Record<string, RecordDetail> = {
+  'rec-profile': {
+    id: 'rec-profile', kind: 'profile', title: 'Patient profile', date: '2026-11-11', facility: 'MyChart',
+    excerpt: 'Margaret Mitchell, born April 3, 1948 (age 78). Primary care doctor: Dr. Yojansen, Riverside Primary Care. Sarah Mitchell, daughter, primary caregiver. Allergies: penicillin (hives).',
+  },
+  'rec-visit-2026-09-09': {
+    id: 'rec-visit-2026-09-09', kind: 'visit-summary', title: 'Dental visit note', date: '2026-09-09', facility: 'Bright Smile Dental', author: 'Dr. Green',
+    excerpt: 'Routine cleaning and exam. No cavities found. Gums healthy. No vital signs (no blood pressure) were taken at this visit. Next cleaning in 6 months.',
+    highlight: 'No vital signs (no blood pressure) were taken at this visit.',
+  },
   'rec-visit-2026-10-28': {
     id: 'rec-visit-2026-10-28', kind: 'visit-summary', title: 'Visit summary', date: '2026-10-28', facility: 'Riverside Primary Care', author: 'Dr. Yojansen',
     excerpt: 'Vitals: BP 110/86 mmHg, pulse 72, weight 141 lb. Patient reports a slight shake in her right hand over the past two months, worse when holding a cup. Mild resting tremor of the right hand noted on exam. Plan: refer to neurology (Dr. Okafor). Continue current medications.',
