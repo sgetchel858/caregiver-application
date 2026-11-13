@@ -165,7 +165,7 @@ export class CognatumAskHealthApi extends MockHealthApi {
     blocks.push(...cards)
     if (advice) blocks.push({ type: 'note', text: adviceRoute(memberId, req.question, member.called) })
 
-    return { ...base, kind: 'answer', blocks, sources: sourcesFor(cited), actions, followUps }
+    return { ...base, kind: 'answer', blocks, sources: sourcesFor(cited, now), actions, followUps }
   }
 
   private memberDocs(memberId: string, folderName: string): Promise<MemberDocs> {
@@ -297,13 +297,15 @@ export function proseToBlocks(answer: string, called: string, hasCard: boolean, 
   return blocks
 }
 
-function sourcesFor(recordIds: string[]): SourceRef[] {
+function sourcesFor(recordIds: string[], now: Date): SourceRef[] {
   const out: SourceRef[] = []
   for (const id of recordIds) {
     const r = fx.records[id]
     if (!r) continue // only records the app can open
     const dated = r.kind !== 'hub-log' && r.kind !== 'care-team' && r.kind !== 'profile'
-    out.push({ recordId: id, label: dated ? `${r.title} · ${monthDay(r.date)}` : r.title })
+    // "Visit summary · Oct 28", but "Radiology report · May 2, 2019" for another year
+    const when = r.date.startsWith(String(now.getFullYear())) ? monthDay(r.date) : monthDayYear(r.date)
+    out.push({ recordId: id, label: dated ? `${r.title} · ${when}` : r.title })
   }
   return out
 }

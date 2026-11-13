@@ -38,7 +38,7 @@ With sign-in on (`VITE_AUTH=auth0`), Ask can answer from Mom's records in Cognat
 - **Ask answers switch** (demo menu): *Demo questions scripted, others from Cognatum* (default) keeps the three moments on the designed answers and sends everything else to Cognatum. *Everything from Cognatum* sends every question. *Scripted only* needs no network.
 - **How an answer is built:** the question goes to SIL folder chat for the member's folder ("Mom" becomes "Margaret"; documents dated after the demo clock are left out). Citations map back to record ids through the file names. BP questions add the BP card, warfarin dose questions add the dose log, advice questions add "ask her doctor", and an uncited reply is shown as out of scope.
 - **Run recall test** asks 23 caregiver questions and checks each cites the expected record.
-- **Local dev only for now:** the browser calls SIL through the Vite proxy. A hosted build needs the adapter behind a server, or the site's origin in Cognatum's `CORS_ORIGINS`.
+- **Hosted:** the browser can't call Cognatum from github.io (its CORS allowlist doesn't include it), so the hosted build calls the Supabase Edge Function `sil` (`supabase/functions/sil`, `VITE_SIL_API_URL` in `.env`). It forwards the user's Auth0 token and `X-SIL-Tenant` server-to-server, holds no secret, and allows only the calls Ask needs: memberships, `/auth/me`, folder and document listings, and folder chat. Seeding needs the local Vite proxy. Deploy changes with `supabase functions deploy sil --use-api --no-verify-jwt` from `app/`.
 
 ## Build and deploy
 
@@ -74,7 +74,7 @@ VITE_SIL_API_URL=/api/v1
 SIL_PROXY_TARGET=https://app.cognatum-demo.com
 ```
 
-Locally, Vite proxies `/api/v1` to `SIL_PROXY_TARGET`, because beta's CORS never allows a `localhost` origin. The hosted build calls `VITE_SIL_API_URL=https://app.cognatum-demo.com/api/v1` directly.
+Locally, Vite proxies `/api/v1` to `SIL_PROXY_TARGET`, because beta's CORS never allows a `localhost` origin. The hosted build calls Cognatum through the `sil` Edge Function (`VITE_SIL_API_URL` in `app/.env`).
 
 **One-time setup**
 
@@ -85,7 +85,7 @@ Locally, Vite proxies `/api/v1` to `SIL_PROXY_TARGET`, because beta's CORS never
    - **Connections** tab: enable only the database connection the Cognatum web app uses, so the Cognatum username and password is the only way in.
 2. **Auth0 → APIs → the Cognatum API (`https://sil-api`)**: turn on **Allow Offline Access**, so the app gets refresh tokens and stays signed in on iPhone. If the API restricts user access by application, allow the new app.
 3. **Auth0 → Actions → Login flow:** add the new client id wherever the Cognatum Actions list SIL clients: the roles Action that writes `https://sil.app/roles` and the `SIL_CLIENT_IDS` secret of the tenant-claim Action. **This one matters.** Cognatum re-syncs a user's Auth0-sourced roles from that claim on every request, so a token without it removes those roles from the account, in the Cognatum web app too.
-4. **Cognatum beta:** add `https://sgetchel858.github.io` to `CORS_ORIGINS` in beta's `.env` and restart the backend. Only the hosted build needs this; local dev goes through the proxy.
+4. **Cognatum beta CORS:** not needed. The hosted build reaches Cognatum through the `sil` Edge Function ([Ask on Cognatum](#ask-on-cognatum)); local dev goes through the Vite proxy.
 5. The demo user must be an active member of the Casanté workspace in Cognatum.
 6. **GitHub Pages build (optional):** set the repository **variable** `VITE_AUTH=auth0` (Settings → Secrets and variables → Actions → Variables). Everything else comes from `app/.env`. Without it the hosted demo stays offline with no sign-in.
 
