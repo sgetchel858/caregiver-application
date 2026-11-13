@@ -249,11 +249,8 @@ export const briefings: Record<SceneId, { nudges: { memberId: string; text: stri
 }
 
 export const askSuggestions: Record<SceneId, { prompts: string[]; prefill?: string }> = {
-  m1: {
-    prompts: ['What meds is Mom on?', "Who's her cardiologist?"],
-    prefill: "What was Mom's BP at her last appointment with Dr. Green?",
-  },
-  m2: { prompts: ['What meds is Mom on?'], prefill: 'What year did Mom break her ankle?' },
+  m1: { prompts: ['What meds is Mom on?', "Who's her cardiologist?"] },
+  m2: { prompts: ['What meds is Mom on?'] },
   m3: { prompts: ['What meds is Mom on?'] },
 }
 

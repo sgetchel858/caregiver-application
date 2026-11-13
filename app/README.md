@@ -24,8 +24,8 @@ npm run dev -- --host       # also on your Wi-Fi, to open on an iPhone or iPad
 
 | Moment | Start | Path |
 |---|---|---|
-| 1 · Neurologist prep | Family home | tap Mom → send the pre-filled question → **Add to tomorrow's prep** |
-| 2 · Hospital | Ask about Mom | send → *Where were the X-rays taken?* → *When did she last take her warfarin?* → **Show answers to the nurse** |
+| 1 · Neurologist prep | Family home | tap Mom → type *What was Mom's BP at her last appointment with Dr. Green?* → **Add to tomorrow's prep** |
+| 2 · Hospital | Ask about Mom | type *What year did Mom break her ankle?* → *Where were the X-rays taken?* → *When did she last take her warfarin?* → **Show answers to the nurse** |
 | 3 · Interaction check | New medication | **Check against Mom's meds** → see results → **Ask the care team** → review and send |
 
 Typed questions work too. The demo questions match with small wording differences ("when did mom break her ankle", "last warfarin dose"). Anything else gets "I can only answer from Mom's records in this demo".
