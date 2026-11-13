@@ -61,6 +61,8 @@ export interface Medication {
   /** e.g. "morning" */
   scheduleShort: string
   prescriberId: string
+  /** who prescribed it, when they aren't on the care team (e.g. "Dr. Patel, St. Luke's ER") */
+  prescriberName?: string
   /** plain words, e.g. "blood pressure" */
   purpose: string
   lastDose?: { takenAt: LocalDateTime; source: 'kitchen-hub' | 'self-report' }
@@ -322,6 +324,8 @@ export interface InteractionCheck {
   findings: InteractionFinding[]
   source: SourceRef
   disclaimer: string
+  /** what was entered on the form, so the result screen can add it to the list */
+  medication?: NewMedication
 }
 
 /* ---------------- Messages to the care team ---------------- */

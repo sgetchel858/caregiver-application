@@ -8,6 +8,7 @@ import { DemoMenu } from './components/DemoMenu'
 import { AuthGate } from './components/AuthGate'
 import { demoState, SCENES, type SceneId } from './services/demo/demoState'
 import { resetMockAppStore } from './services/mock/MockAppStore'
+import { resetAddedMedications } from './services/mock/MockHealthApi'
 import { FamilyHome } from './screens/FamilyHome'
 import { MemberProfile } from './screens/MemberProfile'
 import { AskThread } from './screens/AskThread'
@@ -45,6 +46,7 @@ function Shell() {
     (scene: SceneId) => {
       clearThreads()
       resetMockAppStore()
+      resetAddedMedications()
       demoState.set({ scene, epoch: demoState.get().epoch + 1, failNext: false })
       setMenuOpen(false)
       navigate(SCENES.find((s) => s.id === scene)!.startPath, { replace: true })

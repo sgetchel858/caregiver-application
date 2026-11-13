@@ -48,6 +48,8 @@ export interface HealthApi {
   startInteractionCheck(memberId: string, med: NewMedication): Promise<InteractionCheck>
   /** current state of a check; items resolve one by one until status is "complete" */
   getInteractionCheck(checkId: string): Promise<InteractionCheck>
+  /** adds a medication to the member's list (after the user confirms in the UI) */
+  addMedication(memberId: string, med: NewMedication): Promise<Medication>
   buildPrepSheet(memberId: string, visitId: string, opts?: { pins?: PrepPin[] }): Promise<PrepSheet>
   buildNurseCard(memberId: string): Promise<NurseCard>
   draftInteractionFollowUp(memberId: string, checkId: string): Promise<CareTeamFollowUp>

@@ -35,7 +35,7 @@ export function MedicationList() {
                           <strong>{m.name}</strong> {m.strength} · {m.schedule}
                         </span>
                         <span className="small muted">
-                          {doc ? (doc.role === 'GP' ? doc.name : `${doc.name}, ${doc.role.toLowerCase()}`) : ''} · {m.purpose}
+                          {doc ? (doc.role === 'GP' ? doc.name : `${doc.name}, ${doc.role.toLowerCase()}`) : (m.prescriberName ?? 'New')} · {m.purpose}
                           {m.lastRefill ? ` · refilled ${monthDay(m.lastRefill.date)}` : ''}
                         </span>
                       </div>

@@ -5,6 +5,9 @@ import { ErrorState, ScreenSkeleton } from '../components/Feedback'
 import { Icon } from '../components/Icon'
 import { SourceSheet } from '../components/SourceSheet'
 import { Rich } from '../lib/rich'
+import { useServices } from '../lib/services'
+import { useAction } from '../lib/useAsync'
+import { useUI } from '../lib/ui'
 import { useInteractionCheck } from './InteractionCheckScreen'
 
 /** Moment 3 · 3: the finding, in plain words, with what to ask and what to watch for. */
@@ -13,6 +16,15 @@ export function InteractionResult() {
   const navigate = useNavigate()
   const { check, error, retry } = useInteractionCheck(checkId)
   const [sourceOpen, setSourceOpen] = useState(false)
+  const { health } = useServices()
+  const { toast } = useUI()
+  const add = useAction(async () => {
+    if (!check?.medication) return
+    const med = await health.addMedication(memberId, check.medication)
+    toast(`${med.name} added to her medications`)
+    navigate(`/m/${memberId}/meds`)
+  })
+  const canAdd = !!check?.medication
 
   const ready = check?.status === 'complete'
   const findings = check?.findings ?? []
@@ -91,9 +103,21 @@ export function InteractionResult() {
               </p>
 
               <div className="stack" style={{ gap: 10, marginTop: 'auto' }}>
+                {!!add.error && <ErrorState error={add.error} title="Couldn't add it" onRetry={() => add.run()} />}
                 {findings.length > 0 ? (
-                  <button className="btn btn--primary btn--lg" onClick={() => navigate(`/m/${memberId}/meds/check/${checkId}/care-team`)}>
-                    Ask the care team about this
+                  <>
+                    <button className="btn btn--primary btn--lg" onClick={() => navigate(`/m/${memberId}/meds/check/${checkId}/care-team`)}>
+                      Ask the care team about this
+                    </button>
+                    {canAdd && (
+                      <button className="btn btn--outline btn--48" disabled={add.pending} onClick={() => add.run()}>
+                        {add.pending ? 'Adding…' : 'Add to her medications anyway'}
+                      </button>
+                    )}
+                  </>
+                ) : canAdd ? (
+                  <button className="btn btn--primary btn--lg" disabled={add.pending} onClick={() => add.run()}>
+                    {add.pending ? 'Adding…' : `Add ${check.drug.name.toLowerCase()} to her medications`}
                   </button>
                 ) : (
                   <button className="btn btn--primary btn--lg" onClick={() => navigate(`/m/${memberId}/meds`)}>

@@ -119,6 +119,9 @@ export class LiveHealthApi implements HealthApi {
   startInteractionCheck(memberId: string, med: NewMedication) {
     return this.request<InteractionCheck>('POST', `${this.m(memberId)}/interaction-checks`, med)
   }
+  addMedication(memberId: string, med: NewMedication) {
+    return this.request<Medication>('POST', `${this.m(memberId)}/medications`, med)
+  }
   getInteractionCheck(checkId: string) {
     return this.request<InteractionCheck>('GET', `/interaction-checks/${encodeURIComponent(checkId)}`)
   }

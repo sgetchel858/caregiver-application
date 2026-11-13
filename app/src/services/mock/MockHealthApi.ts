@@ -45,6 +45,26 @@ function need<T>(value: T | undefined | null, what: string): T {
   return value
 }
 
+/* ---------------- medications added in the demo (kept on the device until "Reset demo data") ---------------- */
+
+const ADDED_KEY = 'casante-demo:added-meds'
+
+function loadAdded(): Record<string, Medication[]> {
+  try {
+    return JSON.parse(localStorage.getItem(ADDED_KEY) ?? '{}')
+  } catch {
+    return {}
+  }
+}
+
+export function resetAddedMedications() {
+  try {
+    localStorage.removeItem(ADDED_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
 const clinicianLabel = (c: Clinician) => (c.role === 'GP' ? c.name : `${c.name}, ${c.role.toLowerCase()}`)
 
 export class MockHealthApi implements HealthApi {
@@ -56,6 +76,11 @@ export class MockHealthApi implements HealthApi {
 
   private profileOf(memberId: string): MemberProfile {
     return need(fx.profiles[memberId], 'Member')
+  }
+
+  /** the chart's medications plus any added in the demo */
+  protected medsOf(memberId: string): Medication[] {
+    return [...need(fx.medications[memberId], 'Medications'), ...(loadAdded()[memberId] ?? [])]
   }
 
   private teamOf(memberId: string): Clinician[] {
@@ -87,7 +112,7 @@ export class MockHealthApi implements HealthApi {
   }
 
   getMedications(memberId: string): Promise<Medication[]> {
-    return simulate(() => need(fx.medications[memberId], 'Medications'))
+    return simulate(() => this.medsOf(memberId))
   }
 
   getCareTeam(memberId: string): Promise<Clinician[]> {
@@ -153,7 +178,7 @@ export class MockHealthApi implements HealthApi {
       {
         memberId,
         callName: memberId === fx.MARGARET ? 'Mom' : profile.firstName,
-        medications: need(fx.medications[memberId], 'Medications'),
+        medications: this.medsOf(memberId),
         allergies: profile.allergies,
         careTeam: this.teamOf(memberId),
         primaryClinicianId: profile.primaryClinicianId,
@@ -166,6 +191,37 @@ export class MockHealthApi implements HealthApi {
     return drugCheck.getCheck(checkId)
   }
 
+  async addMedication(memberId: string, med: NewMedication): Promise<Medication> {
+    this.profileOf(memberId)
+    // RxNorm gives the proper name and class ("cipro 500 mg" → Ciprofloxacin 500 mg); fall back to what was typed
+    const match = await drugCheck.lookupDrug(med.name).catch(() => null)
+    const typedName = med.name.replace(/\s*\d.*$/, '').trim() || med.name.trim()
+    const doc = med.prescribedBy.trim()
+      ? this.teamOf(memberId).find((c) => med.prescribedBy.toLowerCase().includes(c.name.toLowerCase().replace(/^dr\.?\s*/, '')))
+      : undefined
+    const schedule = med.frequency.trim() || 'as directed'
+    const added: Medication = {
+      id: `med-added-${Date.now().toString(36)}`,
+      name: match?.name ?? typedName.charAt(0).toUpperCase() + typedName.slice(1),
+      strength: match?.strength ?? med.name.match(/\d+(\.\d+)?\s*(mg|mcg|g|ml|units?|%)/i)?.[0] ?? '',
+      schedule,
+      scheduleShort: schedule,
+      prescriberId: doc?.id ?? '',
+      prescriberName: doc ? undefined : med.prescribedBy.trim() || undefined,
+      purpose: med.reason?.trim() || (match?.drugClass ? match.drugClass.replace(/^an? /i, '') : 'new prescription'),
+    }
+    return simulate(() => {
+      const all = loadAdded()
+      all[memberId] = [...(all[memberId] ?? []), added]
+      try {
+        localStorage.setItem(ADDED_KEY, JSON.stringify(all))
+      } catch {
+        /* storage blocked: still return it */
+      }
+      return added
+    }, 'write')
+  }
+
   buildPrepSheet(memberId: string, visitId: string, opts?: { pins?: PrepPin[] }): Promise<PrepSheet> {
     return simulate(() => {
       const profile = this.profileOf(memberId)
@@ -173,7 +229,7 @@ export class MockHealthApi implements HealthApi {
       const visit = need(fx.visits[memberId]?.find((v) => v.id === visitId), 'Visit')
       const content = need(fx.prepContent[visitId], 'Prep content')
       const doc = team.find((c) => c.id === visit.clinicianId)!
-      const meds = fx.medications[memberId]
+      const meds = this.medsOf(memberId)
 
       const sections: PrepSection[] = [{ type: 'text', id: 'why', title: "Why she's going", text: content.why }]
       let pinnedBp: VitalReading | undefined
@@ -237,7 +293,7 @@ export class MockHealthApi implements HealthApi {
     return simulate(() => {
       const p = this.profileOf(memberId)
       const team = this.teamOf(memberId)
-      const meds = need(fx.medications[memberId], 'Medications')
+      const meds = this.medsOf(memberId)
       const gp = team.find((c) => c.id === p.primaryClinicianId)!
       const thinner = meds.find((m) => m.purpose === 'blood thinner')
       const others = meds.filter((m) => m !== thinner)

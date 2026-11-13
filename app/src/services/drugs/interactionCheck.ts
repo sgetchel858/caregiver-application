@@ -129,7 +129,7 @@ export async function startCheck(subject: CheckSubject, med: NewMedication): Pro
       id: m.id,
       kind: 'medication' as const,
       label: `${m.name} ${m.strength}`,
-      sublabel: clinicianLabel(subject.careTeam.find((c) => c.id === m.prescriberId)),
+      sublabel: m.prescriberName ?? clinicianLabel(subject.careTeam.find((c) => c.id === m.prescriberId)),
       result: 'pending' as const,
     })),
     ...subject.allergies.map((a) => ({
@@ -140,7 +140,7 @@ export async function startCheck(subject: CheckSubject, med: NewMedication): Pro
       result: 'pending' as const,
     })),
   ]
-  const doctors = new Set(subject.medications.map((m) => m.prescriberId)).size
+  const doctors = new Set(subject.medications.map((m) => m.prescriberId || m.prescriberName || 'unknown')).size
   const n = subject.medications.length
   const check: InteractionCheck = {
     id,
@@ -154,6 +154,7 @@ export async function startCheck(subject: CheckSubject, med: NewMedication): Pro
     items,
     findings: [],
     source: { recordId: `${SOURCE_PREFIX}${id}`, label: 'FDA drug labels (openFDA) and RxNorm' },
+    medication: med,
     disclaimer: `This reads the FDA-approved drug labels. It doesn't replace ${subject.callName}'s care team or pharmacist. Don't stop or change any medicine without asking them.`,
   }
   const stored: StoredCheck = { check, subject, med, drug, passages: {} }
